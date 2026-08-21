@@ -1,6 +1,10 @@
+
 # ============================================================
-# Build OpenWrt 25.12 packages (natmap + luci-app-natmap) as ipk
-# 仅当 push 到 main 分支（或打 v* tag）时自动编译，产出各架构 ipk 并上传
+# Build OpenWrt 25.12.4 packages (natmap + luci-app-natmap) as ipk
+# 方案：clone OpenWrt 源码树 + feeds，直接 make 编译目标包。
+# 说明：25.12.4 官方 release 目录不发布按目标的 SDK（已核实），
+#       故不再用 SDK，改用源码树编译，对所有 target 通用。
+# 触发：仅 push 到 main（或打 v* tag），可手动 workflow_dispatch
 # ============================================================
 name: Build OpenWrt packages
 
@@ -20,16 +24,25 @@ jobs:
         include:
           - target: x86
             subtarget: 64
+            config_sym: CONFIG_TARGET_x86=y|CONFIG_TARGET_x86_64=y
           - target: x86
             subtarget: generic
+            config_sym: CONFIG_TARGET_x86=y|CONFIG_TARGET_x86_generic=y
           - target: mediatek
             subtarget: filogic
+            config_sym: CONFIG_TARGET_mediatek=y|CONFIG_TARGET_mediatek_filogic=y
           - target: bcm27xx
             subtarget: bcm2711
+            config_sym: CONFIG_TARGET_bcm27xx=y|CONFIG_TARGET_bcm27xx_bcm2711=y
           - target: ramips
             subtarget: mt7621
+            config_sym: CONFIG_TARGET_ramips=y|CONFIG_TARGET_ramips_mt7621=y
           - target: ipq807x
             subtarget: generic
+            config_sym: CONFIG_TARGET_ipq807x=y|CONFIG_TARGET_ipq807x_generic=y
+
+    env:
+      OPENWRT_DIR: ${{ runner.temp }}/openwrt
 
     steps:
       - name: Checkout
@@ -42,65 +55,65 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
-            python3 python3-setuptools rsync swig unzip zlib1g-dev file wget
+            python3 python3-setuptools rsync swig unzip zlib1g-dev file wget \
+            quilt coreutils xz-utils zip time
 
-      # 动态查找对应 target 的官方 SDK（文件名带编译器版本号，不能写死）
-      - name: Locate OpenWrt SDK
-        id: sdk
-        run: |
-          REL="25.12.4"
-          TGT="${{ matrix.target }}"
-          SUB="${{ matrix.subtarget }}"
-          BASE="https://downloads.openwrt.org/releases/${REL}/targets/${TGT}/${SUB}"
-          SDK=$(curl -fsSL "$BASE/" \
-              | grep -oE 'openwrt-sdk-[^"]*Linux-x86_64\.tar\.xz' | head -n1)
-          if [ -z "$SDK" ]; then
-            echo "::error::SDK not found for ${TGT}/${SUB} at ${BASE}"
-            exit 1
-          fi
-          echo "sdk_url=${BASE}/${SDK}" >> "$GITHUB_OUTPUT"
-          echo "Found SDK: ${SDK}"
+      # 缓存 OpenWrt 源码的下载目录与已编译工具链，加速后续构建
+      - name: Cache OpenWrt build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.OPENWRT_DIR }}/dl
+            ${{ env.OPENWRT_DIR }}/staging_dir
+            ${{ env.OPENWRT_DIR }}/build_dir
+          key: openwrt-25.12.4-${{ matrix.target }}-${{ matrix.subtarget }}-${{ hashFiles('natmap/Makefile', 'luci-app-natmap/Makefile') }}
+          restore-keys: |
+            openwrt-25.12.4-${{ matrix.target }}-${{ matrix.subtarget }}-
 
-      - name: Download & extract SDK
+      - name: Clone OpenWrt source (v25.12.4)
         run: |
-          mkdir -p "${{ runner.temp }}/sdk"
-          wget -q -O "${{ runner.temp }}/sdk.tar.xz" "${{ steps.sdk.outputs.sdk_url }}"
-          tar -C "${{ runner.temp }}/sdk" -xf "${{ runner.temp }}/sdk.tar.xz"
-          echo "SDK_DIR=$(find "${{ runner.temp }}/sdk" -maxdepth 1 -type d -name 'openwrt-sdk-*' | head -n1)" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch v25.12.4 \
+            https://git.openwrt.org/openwrt/openwrt.git "$OPENWRT_DIR"
 
-      - name: Init feeds (OpenWrt 25.12)
-        working-directory: ${{ env.SDK_DIR }}
+      - name: Init feeds
+        working-directory: ${{ env.OPENWRT_DIR }}
         run: |
-          echo "src-git packages https://git.openwrt.org/feed/packages.git^openwrt-25.12" > feeds.conf
+          echo "src-git packages https://git.openwrt.org/feed/packages.git^openwrt-25.12" >> feeds.conf
           echo "src-git luci https://git.openwrt.org/project/luci.git^openwrt-25.12" >> feeds.conf
           echo "src-git routing https://git.openwrt.org/feed/routing.git^openwrt-25.12" >> feeds.conf
           echo "src-git telephony https://git.openwrt.org/feed/telephony.git^openwrt-25.12" >> feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # 用我们仓库的包覆盖官方同名包，确保构建的是本分支代码
       - name: Override with forked packages
-        working-directory: ${{ env.SDK_DIR }}
+        working-directory: ${{ env.OPENWRT_DIR }}
         run: |
           rm -rf feeds/luci/applications/luci-app-natmap
           cp -r "${{ github.workspace }}/luci-app-natmap" feeds/luci/applications/luci-app-natmap
           rm -rf feeds/packages/net/natmap
           cp -r "${{ github.workspace }}/natmap" feeds/packages/net/natmap
 
-      - name: Build packages
-        working-directory: ${{ env.SDK_DIR }}
+      # 非交互式选择目标：写目标 config 符号后 make defconfig 补全
+      - name: Select target
+        working-directory: ${{ env.OPENWRT_DIR }}
         run: |
+          IFS='|' read -r -a SYMS <<< "${{ matrix.config_sym }}"
+          : > .config
+          for s in "${SYMS[@]}"; do echo "$s" >> .config; done
           make defconfig
+
+      - name: Build packages
+        working-directory: ${{ env.OPENWRT_DIR }}
+        run: |
           make package/natmap/compile -j"$(nproc)"
           make package/luci-app-natmap/compile -j"$(nproc)"
-          make package/index   # 生成 opkg 索引
+          make package/index
 
       - name: Collect packages
-        working-directory: ${{ env.SDK_DIR }}
+        working-directory: ${{ env.OPENWRT_DIR }}
         run: |
           DEST="${{ github.workspace }}/out/${{ matrix.target }}-${{ matrix.subtarget }}"
           mkdir -p "$DEST"
-          # 收集所有 .ipk 与 .apk（含依赖），并带上 Packages 索引
           find bin -name '*.ipk' -o -name '*.apk' | sort | while read f; do cp "$f" "$DEST"/; done
           find bin -name 'Packages*' -o -name 'APKINDEX*' | sort | while read f; do cp "$f" "$DEST"/; done
           ls -l "$DEST"
@@ -112,7 +125,6 @@ jobs:
           path: out/${{ matrix.target }}-${{ matrix.subtarget }}
           if-no-files-found: error
 
-  # 打 tag 时，把各架构的 ipk 汇总成一个 Release
   release:
     name: Create GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
@@ -133,7 +145,7 @@ jobs:
         run: |
           cd release
           printf '%s\n' \
-            'OpenWrt 25.12 编译包（natmap + luci-app-natmap）' \
+            'OpenWrt 25.12.4 编译包（natmap + luci-app-natmap）' \
             '' \
             '支持的架构见文件后缀（target-subtarget）：' \
             '- x86-64 / x86-generic' \
