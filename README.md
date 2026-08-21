@@ -1,8 +1,3 @@
-下面是一份完整的 README.md，直接复制保存到你仓库根目录即可。里面用 `你的GitHub用户名` 占位，发布前替换成你自己的。
-
----
-
-```markdown
 # luci-app-natmap（维护分支）
 
 > 本仓库是 [uvswifft/openwrt-natmap](https://github.com/uvswifft/openwrt-natmap)（原作者，**已归档**）的维护分支。
