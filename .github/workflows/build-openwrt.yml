@@ -42,7 +42,7 @@ jobs:
             config_sym: CONFIG_TARGET_ipq807x=y|CONFIG_TARGET_ipq807x_generic=y
 
     env:
-      OPENWRT_DIR: ${{ runner.temp }}/openwrt
+      OPENWRT_DIR: /tmp/openwrt
 
     steps:
       - name: Checkout
