@@ -1,104 +1,190 @@
-## 介绍
+下面是一份完整的 README.md，直接复制保存到你仓库根目录即可。里面用 `你的GitHub用户名` 占位，发布前替换成你自己的。
 
-#### 已归档
+---
 
-注意：鉴于运营商借着打击pcdn的理由，大搞nat4（也许是nat444444444...我也不知道以后会有多少个4），打洞基本失效，继续更新已无必要。大陆地区运营商网内、网间限速严重，ipv6也是苟延残喘，跨境倒是速度不错。。。
-#### 基于 openwrt master 分支的 natmap 插件
+```markdown
+# luci-app-natmap（维护分支）
 
-注意：自 **openwrt23.0** 之后，使用 **golang>= 1.20，luci2**，部分插件不兼容。
+> 本仓库是 [uvswifft/openwrt-natmap](https://github.com/uvswifft/openwrt-natmap)（原作者，**已归档**）的维护分支。
+> 在完全继承原作者设计、功能与 Apache-2.0 许可的前提下，针对新版 OpenWrt 与新版
+> qBittorrent 做了一系列适配与新增功能。**感谢原作者** [uvswifft](https://github.com/uvswifft) 
+> 及上游 [EkkoG/luci-app-natmap](https://github.com/EkkoG/luci-app-natmap)、
+> [heiher/natmap](https://github.com/heiher/natmap) 的工作。
 
-## 基本功能
+---
 
-### 1.目前支持第三方服务调用功能
+## ⚠️ 重要提示
 
-#### 1.1.qBittorrent
+1. **上游已归档**：原仓库 `uvswifft/openwrt-natmap` 已归档、停止维护。本仓库在其基础上继续适配，不保证与上游同步。
+2. **打洞依赖网络条件**：作者弃坑的原因是大环境运营商大搞 NAT4、打洞基本失效。本插件**仅在公网 IP / NAT1（Full Cone）环境下有效**，请先确认你的宽带类型再使用。
+3. **面向 OpenWrt 23.0+ / luci2 / golang>=1.20**：自 OpenWrt 23.0 之后使用 luci2 与新版 golang，旧版插件不兼容。本分支以 **OpenWrt 25.12.4** 为基准测试。
+4. 本人不会编程，本次修改由AI完成，仅为个人使用。
 
-打洞成功后，自动修改 qBittorrent 的端口号，并配置转发（可选）。
-需要配置 qBittorrent 地址、账号、密码用于修改端口。
-需要配置 qBittorrent 使用网卡的 IP 用于配置转发，端口填 0，会转发到修改后的端口。
+---
 
-#### 1.2.Transmission
+## ✨ 本维护分支新增/修复的内容
 
-打洞成功后，自动修改 Transmission 的端口号，并配置转发（可选）。
-需要配置 Transmission 地址、账号、密码用于修改端口。
-需要配置 Transmission 使用网卡的 IP 用于配置转发，端口填 0，会转发到修改后的端口。
+### 1. 修复 qBittorrent 端口修改失败（兼容 qBittorrent 5.2.x）
 
-#### 1.3.Emby
+原版 `qbittorrent.sh` 在 qBittorrent 4.3+ / 5.x 上无法修改监听端口，本分支已修复：
 
-配合 Emby Connect 使用时，用户登录账号后，会从服务器获取最新的连接地址信息，此模式就是用于配置这些信息的。
-需要配置 Emby 地址和 API Key 用于修改连接地址信息。
-此模式必须配置转发，默认不更新「外部域」，如果有配置 DDNS，将 DDNS 域名填入外部域后将不需要再次修改。
-若没有域名，需要将 IP 填入外部域，可以勾选 「Update host with IP」，若对外提供的是 HTTPS 服务，需要勾选 「Update HTTPS Port」。
+- **兼容 qBittorrent 5.2.x 的登录 API 破坏性变更**：
+  - 会话 cookie 由 `SID` 改名为 `QBT_SID_<WebUI端口>`（如 `QBT_SID_8085`）
+  - 登录成功响应码由 `200` 改为 `204`
+  - 原脚本按 `SID=` 正则抓取 cookie 必然失败 → 改为 **curl cookie jar（-c/-b）**，完全不依赖 cookie 名称，对 4.x / 5.0 / 5.1 / 5.2.x 全兼容
+- **通过 CSRF / Host header 校验**：登录与 `setPreferences` 请求均携带与 Host 同源的 `Referer` / `Origin`，避免 qBittorrent 4.3+ 默认开启 CSRF 保护后返回 401
+- **密码安全传输**：改用 `--data-urlencode` 编码，修复密码含 `&`、`^` 等特殊字符时被截断导致的登录失败
+- 重试逻辑完善、缺失参数时给出明确错误提示
 
-#### 1.4.Cloudflare Origin Rules
+> 注：若通过域名访问 qBittorrent WebUI，请在 qBittorrent「Web UI 域名白名单」中加入该域名，否则 Host header 校验同样会 401。
 
-Cloudflare Origin Rules 可以设置回源端口，配合 DDNS 使用时，可以将 DDNS 域名指向 Cloudflare，然后将回源端口设置为打洞后的端口，这样就可以通过 Cloudflare 的 CDN 加速访问。
-需要配置 Cloudflare 的 API Key，邮箱 和 Zone ID，Zone ID 可以在 Cloudflare 的域名首页找到。
-API Key 请访问 https://dash.cloudflare.com/profile/api-tokens 复制 Global API Key。
-需要先在 Cloudflare 后台的 Rules - Origin Rules 下添加一个 Origin Rules，然后将 Origin Rules 的 Name 填入配置中。
-注意：Name 请保持唯一，否则会出现奇怪的问题。
+### 2. 新增：打洞端口同步到防火墙规则（自定义脚本）
 
-#### 1.5.Cloudflare Redirect Rules
+新增 `firewall_nas.sh`，在 natmap 打洞成功后自动把获取到的外部端口写入防火墙规则：
 
-#### 1.6.Cloudflare DDNS
+- 默认目标规则：`nas_incoming_5`（放行qBittorrent的 IPv6入站端口，目标规则需先自行创建）
+- 自动执行 `uci set ... dest_port` 并 `/etc/init.d/firewall reload`
+- 端口/协议未变化时跳过 reload，避免频繁重启防火墙
+- 支持 tcp/udp 协议自动合并；兼容「命名 section」与「option name」两种规则写法
+- 通过 LuCI「自定义脚本」或 plugin-link 方式接入
 
-支持调用 Cloudflare DDNS 功能，存储外部 IP 和端口。
-支持**AAAA 记录**、**HTTPS 记录**、**SRV 记录**。
+### 3. 升级 natmap 核心至 20260214
 
-### 2.目前支持的通知功能
+内置 natmap 程序由 20240813 升级到官方最新 **20260214**（OpenWrt 25.12 官方 feed 同版本），获得以下改进：
 
-#### 2.1. Telegram Bot
+- **端口复用**：keepalive 时尽量沿用同一端口，只有端口不可用时才更换，减少端口跳变
+- 连接失败自动重试（最多 100 次）+ 修复多处 fd 泄漏
+- 转发空闲超时默认值 120s → 300s
+- 新增 `-c`（UDP STUN 探测周期）、`-C`（TCP 拥塞控制）、`-b ~`（端口区间随机分配）等参数
+- 命令行接口向后兼容，原有启动参数全部保留
 
-#### 2.2. PushPlus
+---
 
-#### 2.3. server 酱
+## 📦 功能总览（继承自原版）
 
-#### 2.4. Gotify
+### 第三方服务调用（打洞成功后自动联动）
+- **qBittorrent**：自动修改监听端口（已修复 5.2.x 兼容）
+- **Transmission**：自动修改监听端口
+- **Emby**：配合 Emby Connect 更新连接地址
+- **Cloudflare Origin Rules / Redirect Rules / DDNS**
 
-### 3.端口转发功能
+### 通知
+- Telegram Bot / PushPlus / Server酱 / Gotify
 
-注意：openwrt 网关部署本插件时，可以直接使用 **natmap 转发** 和 **firewall dnat 转发**。 但在内网设备上部署时，若网关为**ikuai**，可使用 **ikuai 端口映射**，其余情况需要在网关手动设置**端口映射**或**dmz**。
+### 端口转发
+- natmap 转发 / OpenWrt firewall dnat 转发 / ikuai 端口映射
 
-#### 3.1.natmap 转发
+### 自定义脚本
+- 打洞成功后执行自定义脚本（本分支的防火墙同步功能即基于此实现）
 
-支持使用 natmap 转发 tcp 和 udp。
+---
 
-#### 3.2.firewall dnat 转发
+## 🚀 使用（编译）
 
-支持使用 openwrt 防火墙转发 tcp 和 udp。
+### 添加软件源
 
-#### 3.3.ikuai 端口映射
-
-当前仅支持使用爱快系统作为主路由，可以自动设置主网关爱快系统的端口映射。
-
-### 4.自定义脚本
-
-支持自定义脚本
-
-## 截图展示
-
-![图1](./.img/natmap-1.png)
-![图2](./.img/natmap-2.png)
-
-## 使用
-
-### openwrt 编译时添加软件源至 feeds.conf.default 首行，以覆盖 openwrt 内置 luci-app-natmap
-
-```
-src-git zzz https://github.com/blueberry-pie-11/openwrt-natmap
-```
-
-### 编译源码，尽量使用编译固件而非插件安装
+在 OpenWrt 源码的 `feeds.conf.default` **首行**添加，以覆盖官方内置 `luci-app-natmap`：
 
 ```
+src-git zzz https://github.com/hahaer123/openwrt-natmap.git
+```
+
+### 编译
+
 ./scripts/feeds update -a
 ./scripts/feeds install -a
-make
+make menuconfig   # 勾选 Network → natmap / luci-app-natmap
+make -j$(nproc)
 ```
 
-## 本脚本相关功能依据以下代码改写：
+> 建议编译固件时一并集成，而非事后安装插件。
 
-1.  https://github.com/EkkoG/luci-app-natmap
-2.  https://github.com/EkkoG/openwrt-natmap
-3.  https://github.com/loyux/ikuai_local_api
-4.  https://github.com/ztc1997/ikuai-bypass
+### 依赖
+
+`luci-app-natmap` 依赖：`+natmap +jq +curl +openssl-util +bash`
+
+---
+
+## ⚙️ 配置说明
+
+### 基本（LuCI → 服务 → NATMap）
+
+| 配置项 | 说明 |
+|---|---|
+| `general_wan_interface` | WAN 接口名（如 `wan`） |
+| `general_nat_protocol` | `tcp` / `udp` |
+| `general_ip_address_family` | `ipv4` / `ipv6` |
+| `general_interval` | keepalive 间隔（秒） |
+| `general_stun_server` | STUN 服务器 |
+| `general_http_server` | HTTP 打洞服务器 |
+| `general_bind_port` | 绑定端口（单端口或范围） |
+
+### qBittorrent 联动
+
+| 配置项 | 说明 |
+|---|---|
+| `link_enable` | 开启联动 `1` |
+| `link_mode` | `qbittorrent` |
+| `link_qb_web_url` | qB WebUI 地址 |
+| `link_qb_username` / `link_qb_password` | qB 登录凭据 |
+| `link_advanced_max_retries` / `link_advanced_sleep_time` | 重试次数与间隔 |
+
+### 防火墙端口同步（本分支新增）
+
+开启「自定义脚本」并指向本仓库内置脚本：
+
+```sh
+uci set natmap.@natmap[0].custom_script_enable=1
+uci set natmap.@natmap[0].custom_script_path=/usr/share/natmap/plugin-link/firewall_nas.sh
+uci commit natmap
+/etc/init.d/natmap restart
+```
+
+脚本默认写入防火墙规则 `nas_incoming_5` 的 `dest_port`（目标 IPv6 为 空，即放行整个局域网的目标端口）。如需调整，编辑 `/usr/share/natmap/firewall_nas.sh` 顶部的 `RULE_NAME` / `RULE_DEST_IP` / `SYNC_PROTO` 变量。
+
+---
+
+## 📁 目录结构
+
+```
+├── luci-app-natmap/
+│   ├── Makefile
+│   ├── htdocs/luci-static/resources/view/natmap/natmap.js   # LuCI2 前端
+│   ├── po/                                                   # 多语言
+│   └── root/
+│       ├── etc/config/natmap                                # 默认配置模板
+│       ├── etc/init.d/natmap                                # procd 服务
+│       └── usr/share/natmap/
+│           ├── update.sh                                    # 打洞成功回调入口
+│           ├── link.sh / forward.sh / notify.sh
+│           ├── plugin-link/
+│           │   ├── qbittorrent.sh                           # 【已修复 5.2.x 兼容】
+│           │   ├── transmission.sh / emby.sh / cloudflare_*.sh
+│           ├── firewall_nas.sh                              # 【新增】防火墙端口同步
+│           └── plugin-notify/ ...
+└── natmap/
+    └── Makefile                                              # 【已升级】natmap 20260214
+```
+
+---
+
+## 🛠 常见问题
+
+| 问题 | 排查 |
+|---|---|
+| 打洞失败 / 一直重试 | 确认宽带是公网 IP / NAT1；更换 STUN 服务器测试 |
+| qB 端口改不动 | 确认 `link_qb_web_url` 与 qB 实际地址一致；域名访问需加入 qB 域名白名单；日志看 `/var/log/natmap/natmap.log` |
+| 防火墙规则未更新 | 确认 `custom_script_enable=1` 且脚本路径存在（`file` 校验要求文件真实存在） |
+| 服务起不来 `validation failed` | `custom_script_path` 指向的文件必须存在 |
+
+---
+
+## 📄 许可与致谢
+
+- 本仓库继承原版许可：**Apache-2.0**（luci-app-natmap）与 **MIT**（natmap 核心）。
+- 上游引用：
+  1. [uvswifft/openwrt-natmap](https://github.com/uvswifft/openwrt-natmap)（原作者，已归档）
+  2. [EkkoG/luci-app-natmap](https://github.com/EkkoG/luci-app-natmap)
+  3. [EkkoG/openwrt-natmap](https://github.com/EkkoG/openwrt-natmap)
+  4. [heiher/natmap](https://github.com/heiher/natmap)（natmap 核心程序）
+
