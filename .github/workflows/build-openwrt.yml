@@ -132,16 +132,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd release
-          NOTES=$(cat <<'EOF'
-OpenWrt 25.12 编译包（natmap + luci-app-natmap）
-
-支持的架构见文件后缀（target-subtarget）：
-- x86-64 / x86-generic
-- mediatek-filogic / bcm27xx-bcm2711 / ramips-mt7621 / ipq807x-generic
-
-安装：上传 ipk 到路由器后执行 opkg install *.ipk
-EOF
-)
+          printf '%s\n' \
+            'OpenWrt 25.12 编译包（natmap + luci-app-natmap）' \
+            '' \
+            '支持的架构见文件后缀（target-subtarget）：' \
+            '- x86-64 / x86-generic' \
+            '- mediatek-filogic / bcm27xx-bcm2711 / ramips-mt7621 / ipq807x-generic' \
+            '' \
+            '安装：上传 ipk 到路由器后执行 opkg install *.ipk' \
+            > NOTES.md
           gh release create "$GITHUB_REF_NAME" ./* \
             --title "openwrt-natmap $GITHUB_REF_NAME" \
-            --notes "$NOTES"
+            --notes-file NOTES.md
