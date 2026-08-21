@@ -81,7 +81,7 @@
 在 OpenWrt 源码的 `feeds.conf.default` **首行**添加，以覆盖官方内置 `luci-app-natmap`：
 
 ```
-src-git zzz https://github.com/hahaer123/openwrt-natmap.git
+src-git zzz https://github.com/hahaher123/openwrt-natmap.git
 ```
 
 ### 编译
