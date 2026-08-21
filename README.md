@@ -87,8 +87,11 @@ src-git zzz https://github.com/hahaer123/openwrt-natmap.git
 ### 编译
 
 ./scripts/feeds update -a
+
 ./scripts/feeds install -a
+
 make menuconfig   # 勾选 Network → natmap / luci-app-natmap
+
 make -j$(nproc)
 ```
 
@@ -128,14 +131,13 @@ make -j$(nproc)
 
 开启「自定义脚本」并指向本仓库内置脚本：
 
-```sh
 uci set natmap.@natmap[0].custom_script_enable=1
 uci set natmap.@natmap[0].custom_script_path=/usr/share/natmap/plugin-link/firewall_nas.sh
 uci commit natmap
 /etc/init.d/natmap restart
 ```
 
-脚本默认写入防火墙规则 `nas_incoming_5` 的 `dest_port`（目标 IPv6 为 空，即放行整个局域网的目标端口）。如需调整，编辑 `/usr/share/natmap/firewall_nas.sh` 顶部的 `RULE_NAME` / `RULE_DEST_IP` / `SYNC_PROTO` 变量。
+脚本默认写入防火墙规则 `nas_incoming_5` 的 `dest_port`（目标 IPv6 为 空，即放行整个局域网的目标端口）。如需调整，编辑 `/usr/share/natmap/plugin-link/firewall_nas.sh` 顶部的 `RULE_NAME` / `RULE_DEST_IP` / `SYNC_PROTO` 变量。
 
 ---
 
