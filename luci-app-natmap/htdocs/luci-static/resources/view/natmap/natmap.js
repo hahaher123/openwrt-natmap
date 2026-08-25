@@ -666,10 +666,10 @@ return view.extend({
     );
     o.description =
       _(
-        "can used with ddns to redirect to the specified URL, such as http://1.2.3.4:1234 or http://abc.com:1234/abc ."
+        "Used with DDNS to redirect visitors to the specified URL, e.g. http://1.2.3.4:1234 or http://abc.com:1234/abc ."
       ) +
       _(
-        "<br />if want to use natmap outter_port, NEW_PORT must be used instead of the port in the URL, such as http://1.2.3.4:1234/NEW_PORT/abc ."
+        "<br />To use the current NAT-mapped external port, replace the port in the URL with NEW_PORT, e.g. http://1.2.3.4:NEW_PORT/ ."
       );
     o.datatype = "string";
     o.modalonly = true;
