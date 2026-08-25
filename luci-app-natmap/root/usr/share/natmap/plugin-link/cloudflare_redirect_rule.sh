@@ -28,31 +28,36 @@ while (true); do
   if [ -n "$cloudflare_ruleset_id" ]; then
     echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录成功" >>/var/log/natmap/natmap.log
 
-    # update cloudflare redirect rule
-    cloudflare_redirect_rule_name="\"$LINK_CLOUDFLARE_REDIRECT_RULE_NAME\""
+    # 按规则名称(description)定位规则索引
+    rule_idx=$(echo "$currrent_rule" | jq -r --arg name "$LINK_CLOUDFLARE_REDIRECT_RULE_NAME" '.result.rules | to_entries | map(select(.value.description == $name) | .key) | first // empty' 2>/dev/null)
 
-    # replace NEW_PORT with outter_port
-    redirect_rule_target_url=$(echo $LINK_CLOUDFLARE_REDIRECT_RULE_TARGET_URL | sed 's/NEW_PORT/'"$outter_port"'/g')
-    new_rule=$(echo "$currrent_rule" | jq '.result.rules| to_entries | map(select(.value.description == '"$cloudflare_redirect_rule_name"')) | .[].key')
-    new_rule=$(echo "$currrent_rule" | jq '.result.rules['"$new_rule"'].action_parameters.from_value.target_url.value = "'"$redirect_rule_target_url"'"')
-
-    request_data=$(echo "$new_rule" | jq '.result')
-
-    # delete last_updated
-    request_data=$(echo "$request_data" | jq 'del(.last_updated)')
-    result=$(curl -m 20 --request PUT \
-      --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/rulesets/$cloudflare_ruleset_id" \
-      --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
-      --header "Content-Type: application/json" \
-      --data "$request_data")
-
-    if [ "$(echo "$result" | jq '.success' | sed 's/"//g')" == "true" ]; then
-      # echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 更新成功" >>/var/log/natmap/natmap.log
-      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功" >>/var/log/natmap/natmap.log
-      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功"
-      break
+    if [ -z "$rule_idx" ]; then
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到名为 $LINK_CLOUDFLARE_REDIRECT_RULE_NAME 的规则" >>/var/log/natmap/natmap.log
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到名为 $LINK_CLOUDFLARE_REDIRECT_RULE_NAME 的规则"
     else
-      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改失败,休眠$sleep_time秒" >>/var/log/natmap/natmap.log
+      # 替换 NEW_PORT 占位符为当前打洞端口
+      redirect_rule_target_url=$(echo "$LINK_CLOUDFLARE_REDIRECT_RULE_TARGET_URL" | sed 's/NEW_PORT/'"$outter_port"'/g')
+
+      # 统一写入 target_url.value（静态跳转形式，接受纯 URL）。
+      # 注意：动态跳转规则(target_url.expression)不接受裸 URL 字面量，
+      # 若原规则是动态类型，这里整体替换 target_url 会自动转为静态类型。
+      new_rule=$(echo "$currrent_rule" | jq --arg url "$redirect_rule_target_url" ".result.rules[$rule_idx].action_parameters.from_value.target_url = {\"value\": \$url}")
+
+      request_data=$(echo "$new_rule" | jq '.result | del(.last_updated)')
+      result=$(curl -m 20 --request PUT \
+        --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/rulesets/$cloudflare_ruleset_id" \
+        --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "$request_data")
+
+      if [ "$(echo "$result" | jq -r '.success')" == "true" ]; then
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功: $redirect_rule_target_url" >>/var/log/natmap/natmap.log
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功: $redirect_rule_target_url"
+        break
+      else
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改失败: $(echo "$result" | jq -c '.errors' 2>/dev/null)" >>/var/log/natmap/natmap.log
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改失败,休眠$sleep_time秒" >>/var/log/natmap/natmap.log
+      fi
     fi
   else
     echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录失败,休眠$sleep_time秒" >>/var/log/natmap/natmap.log

@@ -32,26 +32,31 @@ while (true); do
   if [ -n "$cloudflare_ruleset_id" ]; then
     echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录成功" >>/var/log/natmap/natmap.log
 
-    # 修改 origin rule
-    origin_rule_name="\"$LINK_CLOUDFLARE_ORIGIN_RULE_NAME\""
-    new_rule=$(echo "$currrent_rule" | jq '.result.rules| to_entries | map(select(.value.description == '"$origin_rule_name"')) | .[].key')
-    new_rule=$(echo "$currrent_rule" | jq '.result.rules['"$new_rule"'].action_parameters.origin.port = '"$outter_port"'')
+    # 按规则名称(description)定位规则索引
+    rule_idx=$(echo "$currrent_rule" | jq -r --arg name "$LINK_CLOUDFLARE_ORIGIN_RULE_NAME" '.result.rules | to_entries | map(select(.value.description == $name) | .key) | first // empty' 2>/dev/null)
 
-    # delete last_updated
-    request_data=$(echo "$new_rule" | jq '.result | del(.last_updated)')
-    result=$(curl -m 20 --request PUT \
-      --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/rulesets/$cloudflare_ruleset_id" \
-      --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
-      --header "Content-Type: application/json" \
-      --data "$request_data")
-
-    if [ "$(echo "$result" | jq '.success' | sed 's/"//g')" == "true" ]; then
-      # echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 更新成功" >>/var/log/natmap/natmap.log4
-      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功" >>/var/log/natmap/natmap.log
-      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功"
-      break
+    if [ -z "$rule_idx" ]; then
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到名为 $LINK_CLOUDFLARE_ORIGIN_RULE_NAME 的规则" >>/var/log/natmap/natmap.log
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到名为 $LINK_CLOUDFLARE_ORIGIN_RULE_NAME 的规则"
     else
-      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改失败,休眠$sleep_time秒" >>/var/log/natmap/natmap.log
+      # 更新 origin 回源端口为当前打洞端口
+      new_rule=$(echo "$currrent_rule" | jq --argjson port "$outter_port" ".result.rules[$rule_idx].action_parameters.origin.port = \$port")
+
+      request_data=$(echo "$new_rule" | jq '.result | del(.last_updated)')
+      result=$(curl -m 20 --request PUT \
+        --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/rulesets/$cloudflare_ruleset_id" \
+        --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "$request_data")
+
+      if [ "$(echo "$result" | jq -r '.success')" == "true" ]; then
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功: origin port -> $outter_port" >>/var/log/natmap/natmap.log
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功: origin port -> $outter_port"
+        break
+      else
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改失败: $(echo "$result" | jq -c '.errors' 2>/dev/null)" >>/var/log/natmap/natmap.log
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改失败,休眠$sleep_time秒" >>/var/log/natmap/natmap.log
+      fi
     fi
   else
     echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录失败,休眠$sleep_time秒" >>/var/log/natmap/natmap.log
@@ -67,14 +72,3 @@ while (true); do
     break
   fi
 done
-
-# Check if maximum retries reached
-if [ $retry_count -eq $max_retries ]; then
-  echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 达到最大重试次数，无法修改" >>/var/log/natmap/natmap.log
-  echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 达到最大重试次数，无法修改"
-  exit 1
-else
-  echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功" >>/var/log/natmap/natmap.log
-  echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功"
-  exit 0
-fi
