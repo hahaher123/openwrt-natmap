@@ -41,9 +41,9 @@ uci set firewall.$rule_name_v4.src_dport=$inner_port
 uci set firewall.$rule_name_v4.dest_ip=$FORWARD_TARGET_IP
 uci set firewall.$rule_name_v4.dest_port=$final_forward_target_port
 
-# reload
+# reload（加超时，防止防火墙卡住拖垮整个更新链路）
 uci commit firewall
-/etc/init.d/firewall reload
+timeout 30 /etc/init.d/firewall reload || echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - firewall reload(v4) 超时或失败" >>/var/log/natmap/natmap.log
 
 # --------------------------------------------------------------------------------------------
 # QB and TR ipv6 forward
@@ -87,8 +87,8 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 		done
 		;;
 	esac
-	# reload
+	# reload（加超时，防止防火墙卡住拖垮整个更新链路）
 	uci commit firewall
-	/etc/init.d/firewall reload
+	timeout 30 /etc/init.d/firewall reload || echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - firewall reload(v6) 超时或失败" >>/var/log/natmap/natmap.log
 
 fi
