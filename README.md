@@ -53,6 +53,39 @@
 - 新增 `-c`（UDP STUN 探测周期）、`-C`（TCP 拥塞控制）、`-b ~`（端口区间随机分配）等参数
 - 命令行接口向后兼容，原有启动参数全部保留
 
+### 4. 修复防火墙 IPv6 放行与 Cloudflare 联动问题（2026-08）
+
+#### 4.1 修复 `firewall-forward.sh` IPv6 放行条件失效
+
+原 IPv6 放行判断存在语法错误（`[ [ ... ] && [ ... ] ]` 嵌套、`["...` 缺少空格），该分支**永远不会执行**；且 qbittorrent 的 IPv6 开关判断写反。已修正为：
+
+```bash
+if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || \
+   { [ "${LINK_MODE}" = qbittorrent ] && [ "${LINK_QB_ALLOW_IPV6}" = 1 ]; }; then
+```
+
+#### 4.2 修复 `cloudflare_ddns.sh` 双等号赋值 bug
+
+`local local_result==$(curl ...)` 多写了一个 `=`，导致变量值变成 `=响应体`，jq 解析失败、DDNS 更新**永远失败**。已去掉多余等号。
+
+#### 4.3 修复 init 脚本重复 `-i` 参数
+
+`forward_firewall_target_interface` 被误追加为 natmap 的 `-i` 参数，与 `general_wan_interface` 同时配置时**覆盖 WAN 接口，导致 natmap 绑定到错误接口、打洞失效**。该接口仅需通过环境变量传给转发插件，已删除多余的 `-i` 追加。
+
+#### 4.4 修复 `cloudflare_redirect_rule.sh` 更新失败（动态规则字段不匹配）
+
+**现象**：日志反复出现 `cloudflare_redirect_rule 达到最大重试次数，无法修改`。
+
+**原因**：Cloudflare 控制台创建的动态跳转规则，目标 URL 存于 `target_url.expression`；旧脚本写入 `target_url.value`，两个字段并存被 API 拒绝（`400 错误码 20083: target_url should be either value or expression`）。
+
+**修复**：脚本统一将 `target_url` 整体替换为 `{"value": "<URL>"}`（静态跳转形式，纯 URL 即可被 API 接受），自动兼容动态/静态规则；失败时把 Cloudflare 返回的具体 errors 写入 `/var/log/natmap/natmap.log`。`cloudflare_origin_rule.sh` 同步改进。
+
+#### 4.5 全局健壮性
+
+- 所有插件脚本的 curl 统一增加超时（API 类 `-m 20`、通知类 `-m 15`），避免网络卡死导致脚本挂起、进程堆积
+- `update.sh` 增加 `flock` 并发锁：natmap 异步执行回调且不等待返回，多实例/连续触发时串行化，避免并发写 uci/防火墙冲突
+- 修正 LuCI 帮助文案：`NEW_PORT` 应替换 URL 中的**端口**（冒号后的数字），示例 `http://1.2.3.4:NEW_PORT/`（此前示例为路径形式，易误导）
+
 ---
 
 ## 📦 功能总览（继承自原版）
@@ -139,6 +172,19 @@ uci commit natmap
 
 脚本默认写入防火墙规则 `nas_incoming_5` 的 `dest_port`（目标 IPv6 为 空，即放行整个局域网的目标端口）。如需调整，编辑 `/usr/share/natmap/plugin-link/firewall_nas.sh` 顶部的 `RULE_NAME` / `RULE_DEST_IP` / `SYNC_PROTO` 变量。
 
+### Cloudflare Redirect Rules 联动（本分支修复）
+
+入口域名需在 Cloudflare 开启代理（橙云）；跳转目标域名需为 DNS-only（灰云，解析到家宽公网 IP），否则 Cloudflare 无法代理非 80/443 端口。
+
+| 配置项 | 说明 |
+|---|---|
+| `link_enable` | 开启联动 `1` |
+| `link_mode` | `cloudflare_redirect_rule` |
+| `link_cloudflare_redirect_rule_name` | 与控制台创建的规则名（description）一致 |
+| `link_cloudflare_redirect_rule_target_url` | 跳转目标 URL，**端口位置**用 `NEW_PORT` 占位，如 `http://你的ddns域名:NEW_PORT/` |
+
+跳转链路：`https://入口域名`（橙云）→ 302 → `http://ddns域名:打洞端口`（灰云直连）→ 路由器 DNAT → 内网服务。
+
 ---
 
 ## 📁 目录结构
@@ -173,6 +219,7 @@ uci commit natmap
 | qB 端口改不动 | 确认 `link_qb_web_url` 与 qB 实际地址一致；域名访问需加入 qB 域名白名单；日志看 `/var/log/natmap/natmap.log` |
 | 防火墙规则未更新 | 确认 `custom_script_enable=1` 且脚本路径存在（`file` 校验要求文件真实存在） |
 | 服务起不来 `validation failed` | `custom_script_path` 指向的文件必须存在 |
+| Cloudflare 联动一直重试失败 | 确认规则名与 `link_cloudflare_redirect_rule_name` 一致；看日志 `修改失败: [...]` 中 Cloudflare 返回的具体 errors（新版脚本已输出）；规则需先在控制台创建 |
 
 ---
 
