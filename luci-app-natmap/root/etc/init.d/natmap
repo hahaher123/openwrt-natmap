@@ -116,14 +116,9 @@ natmap_instance() {
 		procd_append_param netdev "$ifname"
 	}
 
-	[ -n "${forward_firewall_target_interface}" ] && {
-		local ifname
-
-		network_get_device ifname "$forward_firewall_target_interface" || ifname="$forward_firewall_target_interface"
-		procd_append_param command -i "$ifname"
-		procd_append_param netdev "$ifname"
-	}
-
+	# 注意：forward_firewall_target_interface 仅通过 EXTRA_ENV 导出为环境变量
+	# 供转发插件使用，不能作为 -i 追加到 natmap 命令行，
+	# 否则会覆盖 general_wan_interface 的 -i，导致 natmap 绑定到错误接口。
 	[ "${forward_enable}" == 1 ] && [ "${forward_mode}" = natmap ] && [ -n "${forward_target_ip}" ] && procd_append_param command -t "$forward_target_ip" -p "$forward_target_port"
 	for e in $EXTRA_ENV; do
 		eval value=\$${e}

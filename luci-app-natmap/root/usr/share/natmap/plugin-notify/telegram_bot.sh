@@ -7,9 +7,9 @@ title="natmap - ${GENERAL_NAT_NAME} 更新"
 
 function curl_proxy() {
     if [ -z "$NOTIFY_TELEGRAM_BOT_PROXY" ]; then
-        curl "$@"
+        curl -m 15 "$@"
     else
-        curl -x $NOTIFY_TELEGRAM_BOT_PROXY "$@"
+        curl -x $NOTIFY_TELEGRAM_BOT_PROXY -m 15 "$@"
     fi
 }
 

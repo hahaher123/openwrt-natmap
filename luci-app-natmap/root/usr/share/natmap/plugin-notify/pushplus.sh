@@ -11,7 +11,7 @@ retry_count=0
 
 while (true); do
 
-    curl -4 -Ss -X POST \
+    curl -4 -Ss -m 15 -X POST \
         -H 'Content-Type: application/json' \
         -d '{"token": "'"${token}"'", "content": "'"${text}"'", "title": "'"${title}"'"}' \
         "http://www.pushplus.plus/send"

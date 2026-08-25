@@ -121,7 +121,7 @@ function call_action() {
 
   # Call the API with the specified cookie and payload
   # The response from the API is stored in local_response variable
-  local local_response=$(curl -s -X POST -H "$headers" -b "$local_cookie" -d "$local_payload" "$call_url")
+  local local_response=$(curl -s -m 20 -X POST -H "$headers" -b "$local_cookie" -d "$local_payload" "$call_url")
 
   # Return the response from the API
   echo "$local_response"
@@ -135,7 +135,7 @@ while (true); do
   # 登录
   login_payload="$(create_payload "login")"
   # echo "login_payload: $login_payload"
-  cookie=$(curl -s -D - -H "$headers" -X POST -d "$login_payload" "$login_url" | awk -F' ' '/Set-Cookie:/ {print $2}')
+  cookie=$(curl -s -m 20 -D - -H "$headers" -X POST -d "$login_payload" "$login_url" | awk -F' ' '/Set-Cookie:/ {print $2}')
   # echo "cookie: $cookie"
 
   # Check if the login was successful

@@ -21,14 +21,14 @@ retry_count=0
 trsid=""
 
 while (true); do
-    trsid=$(curl -s $trauth $url | sed 's/.*<code>//g;s/<\/code>.*//g')
+    trsid=$(curl -s -m 20 $trauth $url | sed 's/.*<code>//g;s/<\/code>.*//g')
 
     # Check if the provided session ID contains the header "X-Transmission-Session-Id"
     if [[ $trsid == *"X-Transmission-Session-Id"* ]]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录成功" >>/var/log/natmap/natmap.log
 
         # Modify the port using the Transmission API
-        tr_result=$(curl -s -X POST \
+        tr_result=$(curl -s -m 20 -X POST \
             -H "$trsid" $trauth \
             -d '{"method":"session-set","arguments":{"peer-port":'$outter_port'}}' \
             "$url")

@@ -53,7 +53,7 @@ if [ "${LINK_ENABLE}" != 1 ]; then
 	exit 0
 fi
 
-if [ [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ] ] || [ [ "${LINK_MODE}" = qbittorrent ] && ["${LINK_QB_ALLOW_IPV6}" != 1 ] ]; then
+if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || { [ "${LINK_MODE}" = qbittorrent ] && [ "${LINK_QB_ALLOW_IPV6}" = 1 ]; }; then
 
 	# get rule name
 	rule_name_v6=$(echo "${GENERAL_NAT_NAME}_v6_allow" | sed 's/[^a-zA-Z0-9]/_/g' | awk '{print tolower($0)}')

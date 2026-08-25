@@ -2,6 +2,11 @@
 
 . /usr/share/libubox/jshn.sh
 
+# 并发锁：natmap 通过 fork 异步执行本脚本且不等待返回，
+# 多实例或映射连续变化时可能并发触发，这里串行化避免并发写 uci/防火墙
+exec 9>/tmp/.natmap.lock
+flock 9
+
 (
 	json_init
 	json_add_string ip "$1"

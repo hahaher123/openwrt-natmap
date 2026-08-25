@@ -24,7 +24,7 @@ function get_dns_record_id() {
   local local_dns_record_id=""
 
   # 获取cloudflare dns记录的dns_record
-  local local_dns_record=$(curl --request GET \
+  local local_dns_record=$(curl -m 20 --request GET \
     --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/dns_records?name=$local_ddns_domain&type=$local_dns_types" \
     --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
     --header "Content-Type: application/json")
@@ -110,8 +110,8 @@ function generate_request_data() {
 function update_dns_record() {
   local local_dns_record_id="$1"
   local local_request_data="$2"
-  local local_result==$(
-    curl --request PUT \
+  local local_result=$(
+    curl -m 20 --request PUT \
       --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/dns_records/$local_dns_record_id" \
       --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
       --header "Content-Type: application/json" \

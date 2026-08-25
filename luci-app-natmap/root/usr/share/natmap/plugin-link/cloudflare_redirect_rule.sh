@@ -5,7 +5,7 @@ outter_ip=$1
 outter_port=$2
 
 function get_current_rule() {
-  curl --request GET \
+  curl -m 20 --request GET \
     --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_dynamic_redirect/entrypoint" \
     --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
     --header "Content-Type: application/json"
@@ -40,7 +40,7 @@ while (true); do
 
     # delete last_updated
     request_data=$(echo "$request_data" | jq 'del(.last_updated)')
-    result=$(curl --request PUT \
+    result=$(curl -m 20 --request PUT \
       --url "https://api.cloudflare.com/client/v4/zones/$LINK_CLOUDFLARE_ZONE_ID/rulesets/$cloudflare_ruleset_id" \
       --header "Authorization: Bearer $LINK_CLOUDFLARE_TOKEN" \
       --header "Content-Type: application/json" \

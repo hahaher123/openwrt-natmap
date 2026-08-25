@@ -33,7 +33,7 @@ LINK_QB_WEB_URL=$(echo "$LINK_QB_WEB_URL" | sed 's/\/$//')
 while true; do
     rm -f "$COOKIE_JAR"
     # 登录：cookie jar 自动保存会话 cookie（无论叫 SID 还是 QBT_SID_<port>）
-    login_code=$(curl -s -o /dev/null -w "%{http_code}" -c "$COOKIE_JAR" -X POST \
+    login_code=$(curl -s -m 20 -o /dev/null -w "%{http_code}" -c "$COOKIE_JAR" -X POST \
         -H "Referer: ${LINK_QB_WEB_URL}/" \
         -H "Origin: ${LINK_QB_WEB_URL}" \
         --data-urlencode "username=$LINK_QB_USERNAME" \
@@ -46,7 +46,7 @@ while true; do
     fi
     if [ "$got_cookie" = "1" ]; then
         # 修改监听端口
-        response=$(curl -s -X POST \
+        response=$(curl -s -m 20 -X POST \
             -b "$COOKIE_JAR" \
             -H "Referer: ${LINK_QB_WEB_URL}/" \
             -H "Origin: ${LINK_QB_WEB_URL}" \

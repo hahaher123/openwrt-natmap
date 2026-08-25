@@ -25,7 +25,7 @@ retry_count=0
 
 while (true); do
 
-    result=$(curl -X POST -s -o /dev/null -w "%{http_code}" "$url" "${message[@]}")
+    result=$(curl -s -m 15 -X POST -o /dev/null -w "%{http_code}" "$url" "${message[@]}")
     if [ $result -eq 200 ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功" >>/var/log/natmap/natmap.log
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功"

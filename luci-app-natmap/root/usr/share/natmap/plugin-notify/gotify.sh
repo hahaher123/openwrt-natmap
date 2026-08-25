@@ -32,7 +32,7 @@ retry_count=0
 while (true); do
 
     # Send the message using curl
-    curl -s -X POST -H "Content-Type: multipart/form-data" -F "token=$token" -F "title=$title" -F "message=$message" -F "priority=$priority" "$gotify_url/message"
+    curl -s -m 15 -X POST -H "Content-Type: multipart/form-data" -F "token=$token" -F "title=$title" -F "message=$message" -F "priority=$priority" "$gotify_url/message"
     status=$?
     if [ $status -eq 0 ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功" >>/var/log/natmap/natmap.log

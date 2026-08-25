@@ -14,7 +14,7 @@ retry_count=0
 current_cfg=""
 
 while (true); do
-    current_cfg=$(curl -v $LINK_EMBY_URL/emby/System/Configuration?api_key=$LINK_EMBY_API_KEY)
+    current_cfg=$(curl -s -m 20 $LINK_EMBY_URL/emby/System/Configuration?api_key=$LINK_EMBY_API_KEY)
 
     if [ -n "$current_cfg" ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录成功" >>/var/log/natmap/natmap.log
@@ -29,7 +29,7 @@ while (true); do
             new_cfg=$(echo $new_cfg | jq ".WanDdns = \"$outter_ip\"")
         fi
 
-        response=$(curl -X POST "$LINK_EMBY_URL/emby/System/Configuration?api_key=$LINK_EMBY_API_KEY" -H "accept: */*" -H "Content-Type: application/json" -d "$new_cfg" -w "%{http_code}")
+        response=$(curl -s -m 20 -X POST "$LINK_EMBY_URL/emby/System/Configuration?api_key=$LINK_EMBY_API_KEY" -H "accept: */*" -H "Content-Type: application/json" -d "$new_cfg" -w "%{http_code}")
 
         if [ "$response" -eq 200 ]; then
             echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功"
