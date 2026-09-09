@@ -11,12 +11,15 @@ retry_count=0
 
 while (true); do
 
-    curl -4 -Ss -m 15 -X POST \
+    # 用 jq 构建请求体，避免消息中含引号/换行时破坏 JSON
+    payload=$(jq -n --arg token "$token" --arg content "$text" --arg title "$title" \
+        '{token: $token, content: $content, title: $title}')
+
+    status=$(curl -4 -s -m 15 -o /dev/null -w "%{http_code}" -X POST \
         -H 'Content-Type: application/json' \
-        -d '{"token": "'"${token}"'", "content": "'"${text}"'", "title": "'"${title}"'"}' \
-        "http://www.pushplus.plus/send"
-    status=$?
-    if [ $status -eq 0 ]; then
+        -d "$payload" \
+        "http://www.pushplus.plus/send")
+    if [ "$status" = "200" ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功" >>/var/log/natmap/natmap.log
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功"
         break

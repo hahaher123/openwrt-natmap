@@ -5,7 +5,7 @@ config natmap
 	option general_ip_address_family ''
 	option general_wan_interface ''
 	option general_interval ''
-	option general_stun_server 'stunserver.stunprotocol.org'
+	option general_stun_server 'stun.cloudflare.com'
 	option general_http_server 'example.com'
 	option general_bind_port '8080'
 	option forward_enable '0'

@@ -67,7 +67,9 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 	uci set firewall.$rule_name_v6.target=ACCEPT
 	uci set firewall.$rule_name_v6.proto=$protocol
 	uci set firewall.$rule_name_v6.family=ipv6
-	uci set firewall.$rule_name_v6.dest_port=$final_forward_target_port
+	# IPv6 无 NAT，qBittorrent/Transmission 监听端口即打洞获得的外部端口($outter_port)，
+	# 不能使用 forward_target_port（那是 IPv4 DNAT 的目标端口，与服务监听端口不一致）
+	uci set firewall.$rule_name_v6.dest_port=$outter_port
 
 	# check if dest_ip is already set with return code
 	if uci get firewall.$rule_name_v6.dest_ip >/dev/null 2>&1; then

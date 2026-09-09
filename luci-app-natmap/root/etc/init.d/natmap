@@ -124,7 +124,8 @@ natmap_instance() {
 		eval value=\$${e}
 		option_name=$(echo "$e" | tr 'a-z' 'A-Z')
 		if [ -n "$value" ]; then
-			procd_append_param env $option_name="$value"
+			# 整体加引号，避免值中含有空格时被拆分成两个参数
+			procd_append_param env "$option_name=$value"
 		fi
 	done
 

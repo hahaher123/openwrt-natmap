@@ -9,7 +9,8 @@ function curl_proxy() {
     if [ -z "$NOTIFY_TELEGRAM_BOT_PROXY" ]; then
         curl -m 15 "$@"
     else
-        curl -x $NOTIFY_TELEGRAM_BOT_PROXY -m 15 "$@"
+        # 代理地址加引号，避免含特殊字符时被拆分
+        curl -x "$NOTIFY_TELEGRAM_BOT_PROXY" -m 15 "$@"
     fi
 }
 
@@ -20,12 +21,17 @@ retry_count=0
 
 while (true); do
 
-    curl_proxy -4 -Ss -o /dev/null -X POST \
+    # 用 jq 构建请求体，避免消息中含引号/换行时破坏 JSON
+    payload=$(jq -n --arg chat_id "$chat_id" --arg text "${title}
+
+${text}" \
+        '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_notification: false}')
+
+    status=$(curl_proxy -4 -s -m 15 -o /dev/null -w "%{http_code}" -X POST \
         -H 'Content-Type: application/json' \
-        -d '{"chat_id": "'"${chat_id}"'", "text": "'"${title}\n\n${text}"'", "parse_mode": "HTML", "disable_notification": "false"}' \
-        "https://api.telegram.org/bot${token}/sendMessage"
-    status=$?
-    if [ $status -eq 0 ]; then
+        -d "$payload" \
+        "https://api.telegram.org/bot${token}/sendMessage")
+    if [ "$status" = "200" ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功" >>/var/log/natmap/natmap.log
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功"
         break

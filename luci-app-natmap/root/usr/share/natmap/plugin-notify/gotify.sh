@@ -31,10 +31,10 @@ retry_count=0
 
 while (true); do
 
-    # Send the message using curl
-    curl -s -m 15 -X POST -H "Content-Type: multipart/form-data" -F "token=$token" -F "title=$title" -F "message=$message" -F "priority=$priority" "$gotify_url/message"
-    status=$?
-    if [ $status -eq 0 ]; then
+    # 检查 HTTP 状态码而非仅 curl 退出码：服务端返回 4xx/5xx 时
+    # curl 退出码仍为 0，旧写法会把失败误判为"发送成功"而不再重试
+    status=$(curl -s -m 15 -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: multipart/form-data" -F "token=$token" -F "title=$title" -F "message=$message" -F "priority=$priority" "$gotify_url/message")
+    if [ "$status" = "200" ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功" >>/var/log/natmap/natmap.log
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功"
         break

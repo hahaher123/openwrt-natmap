@@ -19,19 +19,21 @@ while (true); do
     if [ -n "$current_cfg" ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 登录成功" >>/var/log/natmap/natmap.log
         new_cfg=$current_cfg
-        if [ ! -z $LINK_EMBY_USE_HTTPS ] && [ $LINK_EMBY_USE_HTTPS = '1' ]; then
+        if [ "${LINK_EMBY_USE_HTTPS}" = '1' ]; then
             new_cfg=$(echo $current_cfg | jq ".PublicHttpsPort = $outter_port")
         else
             new_cfg=$(echo $current_cfg | jq ".PublicPort = $outter_port")
         fi
 
-        if [ ! -z $LINK_EMBY_UPDATE_HOST_WITH_IP ] && [ $LINK_EMBY_UPDATE_HOST_WITH_IP = '1' ]; then
+        if [ "${LINK_EMBY_UPDATE_HOST_WITH_IP}" = '1' ]; then
             new_cfg=$(echo $new_cfg | jq ".WanDdns = \"$outter_ip\"")
         fi
 
-        response=$(curl -s -m 20 -X POST "$LINK_EMBY_URL/emby/System/Configuration?api_key=$LINK_EMBY_API_KEY" -H "accept: */*" -H "Content-Type: application/json" -d "$new_cfg" -w "%{http_code}")
+        # 只取 HTTP 状态码判断成败（Emby 保存配置可能返回 200/204，
+        # 旧写法把响应体和状态码拼在一起再 -eq 比较，遇非 200 会报错且 204 被误判为失败）
+        response=$(curl -s -m 20 -o /dev/null -X POST "$LINK_EMBY_URL/emby/System/Configuration?api_key=$LINK_EMBY_API_KEY" -H "accept: */*" -H "Content-Type: application/json" -d "$new_cfg" -w "%{http_code}")
 
-        if [ "$response" -eq 200 ]; then
+        if [ "$response" -ge 200 ] 2>/dev/null && [ "$response" -lt 300 ] 2>/dev/null; then
             echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功"
             echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 修改成功" >>/var/log/natmap/natmap.log
             break

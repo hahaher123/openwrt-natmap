@@ -3,13 +3,6 @@
 title="natmap - ${GENERAL_NAT_NAME} 更新"
 desp="$1"
 
-# 拼装post数据
-postdata="title=$title&desp=$desp"
-message=(
-    "--header" "Content-type: application/x-www-form-urlencoded"
-    "--data" "$postdata"
-)
-
 # 获取url
 url=""
 if [ "${NOTIFY_SERVERCHAN_ADVANCED_ENABLE}" == 1 ] && [ -n "$NOTIFY_SERVERCHAN_ADVANCED_URL" ]; then
@@ -25,7 +18,11 @@ retry_count=0
 
 while (true); do
 
-    result=$(curl -s -m 15 -X POST -o /dev/null -w "%{http_code}" "$url" "${message[@]}")
+    # --data-urlencode 对 title/desp 做 URL 编码，
+    # 旧写法手工拼接 title=xx&desp=xx，消息含 &、= 或换行时参数会被截断
+    result=$(curl -s -m 15 -X POST -o /dev/null -w "%{http_code}" "$url" \
+        --data-urlencode "title=$title" \
+        --data-urlencode "desp=$desp")
     if [ $result -eq 200 ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功" >>/var/log/natmap/natmap.log
         echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $NOTIFY_MODE 发送成功"

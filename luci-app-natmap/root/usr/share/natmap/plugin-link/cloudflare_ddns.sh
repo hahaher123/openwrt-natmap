@@ -136,7 +136,13 @@ while (true); do
     # 更新 AAAA 记录
     request_data="$(generate_request_data "$dns_type")"
     dns_record_id="$(get_dns_record_id "$LINK_CLOUDFLARE_DDNS_DOMAIN" "$dns_type")"
-    result="$(update_dns_record "$dns_record_id" "$request_data")"
+    # 记录不存在时直接报错重试，避免向 .../dns_records/ 空 id 发起无效 PUT
+    if [ -z "$dns_record_id" ]; then
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到 $dns_type 记录($LINK_CLOUDFLARE_DDNS_DOMAIN), 请先在 Cloudflare 添加该记录" >>/var/log/natmap/natmap.log
+      result="false"
+    else
+      result="$(update_dns_record "$dns_record_id" "$request_data")"
+    fi
 
     # 判断api是否调用成功
     if [ "$result" == "true" ]; then
@@ -151,7 +157,12 @@ while (true); do
     # 更新 HTTPS 记录
     request_data="$(generate_request_data "$dns_type")"
     dns_record_id="$(get_dns_record_id "$LINK_CLOUDFLARE_DDNS_DOMAIN" "$dns_type")"
-    result="$(update_dns_record "$dns_record_id" "$request_data")"
+    if [ -z "$dns_record_id" ]; then
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到 $dns_type 记录($LINK_CLOUDFLARE_DDNS_DOMAIN), 请先在 Cloudflare 添加该记录" >>/var/log/natmap/natmap.log
+      result="false"
+    else
+      result="$(update_dns_record "$dns_record_id" "$request_data")"
+    fi
 
     # 判断api是否调用成功
     if [ "$result" == "true" ]; then
@@ -167,7 +178,12 @@ while (true); do
     dns_type="A"
     request_data="$(generate_request_data "$dns_type")"
     dns_record_id="$(get_dns_record_id "$LINK_CLOUDFLARE_DDNS_SRV_TARGET_DOMAIN" "$dns_type")"
-    result="$(update_dns_record "$dns_record_id" "$request_data")"
+    if [ -z "$dns_record_id" ]; then
+      echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到 $dns_type 记录($LINK_CLOUDFLARE_DDNS_SRV_TARGET_DOMAIN), 请先在 Cloudflare 添加该记录" >>/var/log/natmap/natmap.log
+      result="false"
+    else
+      result="$(update_dns_record "$dns_record_id" "$request_data")"
+    fi
 
     # 判断api是否调用成功，成功则继续下一步，更新SRV记录
     if [ "$result" == "true" ]; then
@@ -175,7 +191,12 @@ while (true); do
       dns_type="SRV"
       request_data="$(generate_request_data "$dns_type")"
       dns_record_id="$(get_dns_record_id "$LINK_CLOUDFLARE_DDNS_DOMAIN" "$dns_type")"
-      result="$(update_dns_record "$dns_record_id" "$request_data")"
+      if [ -z "$dns_record_id" ]; then
+        echo "$(date +'%Y-%m-%d %H:%M:%S') : $GENERAL_NAT_NAME - $LINK_MODE 未找到 $dns_type 记录($LINK_CLOUDFLARE_DDNS_DOMAIN), 请先在 Cloudflare 添加该记录" >>/var/log/natmap/natmap.log
+        result="false"
+      else
+        result="$(update_dns_record "$dns_record_id" "$request_data")"
+      fi
 
       # 判断api是否调用成功
       if [ "$result" == "true" ]; then

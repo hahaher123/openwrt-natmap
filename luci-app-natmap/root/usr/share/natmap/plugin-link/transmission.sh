@@ -8,8 +8,6 @@ protocol=$5
 
 LINK_TR_RPC_URL=$(echo $LINK_TR_RPC_URL | sed 's/\/$//')
 url="$LINK_TR_RPC_URL/transmission/rpc"
-# update port
-trauth="-u $LINK_TR_USERNAME:$LINK_TR_PASSWORD"
 
 # 默认重试次数为1，休眠时间为3s
 max_retries=$6
@@ -21,7 +19,8 @@ retry_count=0
 trsid=""
 
 while (true); do
-    trsid=$(curl -s -m 20 $trauth $url | sed 's/.*<code>//g;s/<\/code>.*//g')
+    # 凭据整体加引号，避免用户名/密码含空格或特殊字符时被拆分
+    trsid=$(curl -s -m 20 -u "$LINK_TR_USERNAME:$LINK_TR_PASSWORD" $url | sed 's/.*<code>//g;s/<\/code>.*//g')
 
     # Check if the provided session ID contains the header "X-Transmission-Session-Id"
     if [[ $trsid == *"X-Transmission-Session-Id"* ]]; then
@@ -29,7 +28,7 @@ while (true); do
 
         # Modify the port using the Transmission API
         tr_result=$(curl -s -m 20 -X POST \
-            -H "$trsid" $trauth \
+            -H "$trsid" -u "$LINK_TR_USERNAME:$LINK_TR_PASSWORD" \
             -d '{"method":"session-set","arguments":{"peer-port":'$outter_port'}}' \
             "$url")
 
@@ -40,9 +39,6 @@ while (true); do
             break
         fi
     fi
-
-    # Sleep for a specified amount of time
-    sleep $sleep_time
 
     # 检测剩余重试次数
     let retry_count++

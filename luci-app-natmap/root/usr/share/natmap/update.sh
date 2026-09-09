@@ -2,6 +2,10 @@
 
 . /usr/share/libubox/jshn.sh
 
+# 确保运行/日志目录存在（flock 超时分支和 json_dump 都依赖目录，
+# 独立运行或 /var 被清理后目录可能不存在）
+mkdir -p /var/run/natmap /var/log/natmap
+
 # 并发锁：natmap 通过 fork 异步执行本脚本且不等待返回，
 # 多实例或映射连续变化时可能并发触发，这里串行化避免并发写 uci/防火墙。
 # 加超时保护：若上一个实例异常卡住，等待 30 秒后跳过本次更新，
@@ -56,7 +60,7 @@ echo "$(date +'%Y-%m-%d %H:%M:%S') : natmap update json: $(cat /var/run/natmap/$
 
 # custom setting
 [ "${CUSTOM_SCRIPT_ENABLE}" == 1 ] && [ -n "${CUSTOM_SCRIPT_PATH}" ] && {
-	export -n CUSTOM_SCRIPT_PATH
+	# 注意：不能用 bash 的 `export -n`（busybox ash 不支持，会在 OpenWrt 上报错）
 	source "${CUSTOM_SCRIPT_PATH}" "$@"
 }
 
