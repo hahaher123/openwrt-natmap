@@ -143,6 +143,24 @@ clear_status_files() {
 	find "${STATUS_PATH}" -type f -print0 | xargs -0 rm -f --
 }
 
+# 清理已停止实例遗留的状态 JSON（reload 时 procd 只重启变化的实例，
+# 被重启/停止实例的旧 pid JSON 文件会残留，按 pid 进程存活检测清理）
+clean_stale_status_files() {
+	local file pid
+
+	for file in "${STATUS_PATH}"/*.json; do
+		[ -f "$file" ] || continue
+		pid="${file##*/}"
+		pid="${pid%.json}"
+		case "$pid" in
+			''|*[!0-9]*)
+				continue
+				;;
+		esac
+		kill -0 "$pid" 2>/dev/null || rm -f "$file"
+	done
+}
+
 service_triggers() {
 	local interfaces
 
@@ -177,15 +195,20 @@ start_service() {
 		}
 	}
 	mkdir -p "${STATUS_PATH}"
-	clear_status_files
 
 	config_load "${NAME}"
 	config_foreach validate_section_natmap natmap natmap_instance
 }
 
+# reload 语义：重新声明实例列表，procd 自动做实例级 diff——
+# 配置未变的实例保持运行（不打断已打洞的端口），仅
+# 新增的实例启动、修改的实例重启、删除/禁用的实例停止。
+# 不能用 stop+start：那会把所有规则全部重启、全部重新打洞。
 reload_service() {
-	stop
 	start
+	# 等待 procd 完成被停止实例的回收，再清理其遗留的状态 JSON
+	sleep 1
+	clean_stale_status_files
 }
 
 service_stopped() {
