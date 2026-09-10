@@ -8,10 +8,22 @@ mkdir -p /var/run/natmap /var/log/natmap
 
 # 并发锁：natmap 通过 fork 异步执行本脚本且不等待返回，
 # 多实例或映射连续变化时可能并发触发，这里串行化避免并发写 uci/防火墙。
-# 加超时保护：若上一个实例异常卡住，等待 30 秒后跳过本次更新，
+# 注意：BusyBox 的 flock 不支持 -w(等待超时)选项，只支持 [-sxun]，
+# 因此用 -n 非阻塞加锁 + 循环重试实现最长 30 秒的等待：
+# 若上一个实例异常卡住，等待 30 秒后跳过本次更新，
 # 避免整条链路(状态JSON/转发/通知)被永久阻塞
 exec 9>/tmp/.natmap.lock
-flock -w 30 9 || {
+locked=0
+i=0
+while [ "$i" -lt 30 ]; do
+	if flock -n 9 2>/dev/null; then
+		locked=1
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+[ "$locked" = 1 ] || {
 	echo "$(date +'%Y-%m-%d %H:%M:%S') : ${GENERAL_NAT_NAME:-natmap} - 上一次更新未结束(锁等待超时), 跳过本次" >>/var/log/natmap/natmap.log
 	exit 1
 }
