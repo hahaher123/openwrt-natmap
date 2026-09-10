@@ -22,7 +22,7 @@ define Package/natmap
   CATEGORY:=Network
   TITLE:=TCP/UDP port mapping tool for full cone NAT
   URL:=https://github.com/heiher/natmap
-  DEPENDS:=+jq +curl +openssl-util
+  DEPENDS:=+jq +curl +openssl-util +bash
 endef
 
 MAKE_FLAGS += REV_ID="$(PKG_VERSION)"

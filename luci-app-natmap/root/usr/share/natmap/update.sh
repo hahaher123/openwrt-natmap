@@ -1,4 +1,7 @@
-#!/bin/sh
+#!/bin/bash
+# 注意：本脚本由 natmap 按文件 shebang 直接执行，且会 source
+# forward/link/notify 等 bash 脚本，必须保持 #!/bin/bash；
+# bash 依赖由 natmap/luci-app-natmap 的 Makefile DEPENDS 保证。
 
 . /usr/share/libubox/jshn.sh
 
