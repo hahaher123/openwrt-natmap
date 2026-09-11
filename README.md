@@ -160,6 +160,43 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 
 ---
 
+### 7. 自动编译与发布（GitHub Actions，2026-09）
+
+`.github/workflows/build.yml` 会在版本号变动时自动用 OpenWrt SDK 编译并发布 GitHub Release，无需本地环境。
+
+**触发方式**
+
+| 触发 | 行为 |
+|---|---|
+| 推送 `vX.Y.Z` 标签 | 用该标签处的代码编译，并创建／更新对应 Release |
+| 推送 `master` 且 `luci-app-natmap/Makefile` 的 `PKG_VERSION` 已变化 | 自动打上 `v<新版本>` 标签 → 编译 → 发布 Release |
+| 手动触发（Actions → Build & Release Packages → Run workflow） | 可指定版本号；勾选 `force` 可重建已存在的版本并覆盖 Release 资产 |
+
+> 若 `PKG_VERSION` 未变化（标签已存在），`master` 推送会直接跳过，不会重复发版。发版流程因此简化为：**改 `PKG_VERSION` → 提交推送 → 等待 CI**。
+
+**产物**（OpenWrt 25.12 / apk 格式）
+
+| 文件 | 说明 |
+|---|---|
+| `luci-app-natmap-<版本>-r<revision>.apk` | 应用本体（界面、脚本、插件、默认配置） |
+| `luci-i18n-natmap-zh-cn-<版本>-r1.apk` | 简体中文翻译 |
+| `luci-i18n-natmap-zh-tw-<版本>-r1.apk` | 正體中文翻譯 |
+| `luci-i18n-natmap-ja-<版本>-r1.apk` | 日本語翻訳 |
+
+均为 `PKGARCH:=all` 的架构无关包，任何架构的路由器都能安装。
+
+**实现要点**
+
+- 用官方 `openwrt/gh-action-sdk` 在 `x86_64-25.12.5` SDK 容器里编译；SDK 版本写在 workflow 顶部的 `env.SDK_ARCH`，需要 ipk（OpenWrt 24.10 及更早）时改成 `x86_64-24.10.7` 并把收集产物时的 `.apk` 换成 `.ipk` 即可；
+- 只编译 `luci-app-natmap` 目录，`luci-i18n-natmap-*` 翻译包由 `luci.mk` 在该目录下生成，一并产出；
+- `luci-app-natmap/Makefile` 里把本应用与翻译包的 `DEFAULT` 显式设为 `m`——否则它们默认为 `n`，SDK 的 `make package/<目录>/compile` 会直接跳过未启用的包目录，构建不出任何东西；
+- Release 说明由 `.github/scripts/release-notes.sh` 生成：列出上一个标签以来的提交、本次附加的文件与安装命令；
+- 顺带修复：日文翻译目录原先命名为 `po/jp`，而 LuCI 的语言代码是 `ja`（该 `.po` 文件头写的也正是 `Language: ja`），导致 `luci-i18n-natmap-ja` **从未被生成过**。已重命名为 `po/ja`，现在会随 CI 一起产出。（`po/en` 是英文原文，LuCI 不会为它生成包，属正常。）
+
+**关于包签名**：CI 编译的包未经 OpenWrt 官方密钥签名，安装时必须加 `--allow-untrusted`（见下文"直接安装预编译包"）。如需签名，在仓库 Secrets 里配置 `PRIVATE_KEY`（apk 签名私钥）即可，workflow 会自动带上。
+
+---
+
 ## 📦 功能总览（继承自原版）
 
 ### 第三方服务联动（打洞成功后自动调用）
@@ -207,6 +244,23 @@ make -j$(nproc)
 ### 3. 依赖
 
 `luci-app-natmap` 依赖：`+natmap +jq +curl +openssl-util +bash`
+
+### 4. 直接安装预编译包（apk，OpenWrt 25.12+）
+
+不想自己编译时，可直接下载 [Releases](https://github.com/hahaher123/openwrt-natmap/releases) 里 CI 编译好的 apk：
+
+```sh
+# 包为自行编译、未经 OpenWrt 官方签名，必须加 --allow-untrusted
+apk add --allow-untrusted ./luci-app-natmap-<版本>.apk
+
+# 需要中文界面时再装翻译包（安装后自动切换到对应语言）
+apk add --allow-untrusted ./luci-i18n-natmap-zh-cn-<版本>.apk
+
+# 升级
+apk add --allow-untrusted --upgrade ./luci-app-natmap-*.apk
+```
+
+> `jq`、`curl`、`openssl-util`、`bash` 来自 OpenWrt 官方源；`natmap` 本体本仓库不提供预编译包，请先按你现有的方式安装好，否则 `apk` 会因缺少依赖而拒绝安装。
 
 ---
 
@@ -267,10 +321,13 @@ uci commit natmap
 ## 📁 目录结构
 
 ```text
+├── .github/
+│   ├── workflows/build.yml                                  # 【新增】自动编译 + 发版
+│   └── scripts/release-notes.sh                             # 【新增】生成 Release 说明
 ├── luci-app-natmap/
 │   ├── Makefile
 │   ├── htdocs/luci-static/resources/view/natmap/natmap.js   # LuCI2 前端
-│   ├── po/                                                   # 多语言
+│   ├── po/                                                   # 多语言（en / ja / zh_Hans / zh_Hant）
 │   └── root/
 │       ├── etc/config/natmap                                # 默认配置模板
 │       ├── etc/init.d/natmap                                # procd 服务

@@ -1,0 +1,213 @@
+name: Build & Release Packages
+
+# 触发方式：
+#   1) 推送 vX.Y.Z 标签      -> 为该校签编译并发布 Release
+#   2) 推送 master 且 luci-app-natmap/Makefile 的 PKG_VERSION 有变动
+#                            -> 自动打 tag、编译、发布 Release
+#   3) 手动触发（可指定版本号，或强制重建已存在的版本）
+#
+# 产物：OpenWrt 25.12（apk 包格式）
+#   luci-app-natmap-<ver>-r<rel>.apk        界面与脚本，PKGARCH=all，架构无关
+#   luci-i18n-natmap-zh-cn / zh-tw / ja     翻译包，架构无关
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要发布的版本号（不含 v 前缀；留空则读取 Makefile 中的 PKG_VERSION）'
+        required: false
+        type: string
+      force:
+        description: '即使该版本 tag 已存在，也重新编译并覆盖 Release 资产'
+        required: false
+        type: boolean
+        default: false
+
+# 需要写权限：创建 tag、创建 Release、上传资产
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 编译用 SDK。x86_64 仅决定用哪个 SDK，产物是 PKGARCH=all 的架构无关包。
+  # 如需 ipk（OpenWrt 24.10 及更早），改成 x86_64-24.10.7 并将下面的 .apk 换成 .ipk。
+  SDK_ARCH: x86_64-25.12.5
+  # 本仓库同时被挂载为 SDK 的一个 feed，此名即输出目录名
+  FEED_NAME: natmap
+  # 要编译的包目录。luci-i18n-natmap-* 翻译包在同一个目录里定义，编译它会一并产出。
+  BUILD_PACKAGES: luci-app-natmap
+  PKG_MAKEFILE: luci-app-natmap/Makefile
+
+jobs:
+  prepare:
+    name: 解析版本号
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      build: ${{ steps.resolve.outputs.build }}
+      need_tag: ${{ steps.resolve.outputs.need_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 计算 tag 并判断是否需要构建
+        id: resolve
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -eu
+
+          if [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"
+            NEED_TAG=false
+          else
+            if [ -n "${INPUT_VERSION}" ]; then
+              VERSION="$INPUT_VERSION"
+            else
+              VERSION="$(sed -n 's/^PKG_VERSION:=//p' "$PKG_MAKEFILE" | head -n 1)"
+            fi
+            if [ -z "$VERSION" ]; then
+              echo "::error::无法从 $PKG_MAKEFILE 读取 PKG_VERSION"
+              exit 1
+            fi
+            TAG="v${VERSION}"
+            NEED_TAG=true
+          fi
+
+          BUILD=true
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} 已存在"
+            if [ "$NEED_TAG" = "true" ] && [ "$FORCE" != "true" ]; then
+              echo "版本号未变动，跳过本次构建（如需重建请手动触发并勾选 force）"
+              BUILD=false
+            fi
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "need_tag=${NEED_TAG}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+          echo "=> tag=${TAG} build=${BUILD} need_tag=${NEED_TAG}"
+
+  build:
+    name: 编译 apk
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 释放磁盘空间
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /usr/share/dotnet /usr/share/swift
+          df -h / | tail -n 1
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 使用 OpenWrt SDK 编译
+        uses: openwrt/gh-action-sdk@v11
+        env:
+          ARCH: ${{ env.SDK_ARCH }}
+          FEEDNAME: ${{ env.FEED_NAME }}
+          PACKAGES: ${{ env.BUILD_PACKAGES }}
+          V: s
+
+      - name: 收集编译产物
+        run: |
+          mkdir -p dist
+
+          echo "--- bin/packages 下的目录 ---"
+          find bin/packages -maxdepth 3 -type d | head -n 40 || true
+
+          # 按包名收集，避免把 SDK 自带的其他预编译包一并打包
+          find bin/packages -type f -name '*natmap*.apk' -exec cp -v {} dist/ \; || true
+
+          # 兜底：按包名没匹配到时，从本仓库 feed 的输出目录收集
+          if [ -z "$(ls -A dist)" ]; then
+            echo "未按包名匹配到产物，改用 feed 输出目录收集"
+            find bin/packages -type f -path "*/${FEED_NAME}/*.apk" -exec cp -v {} dist/ \; || true
+          fi
+
+          echo "--- dist ---"
+          ls -l dist/
+
+      - name: 校验产物
+        run: |
+          if ! ls dist/luci-app-natmap-*.apk >/dev/null 2>&1; then
+            echo "::error::没有产出 luci-app-natmap 的 apk"
+            exit 1
+          fi
+          if ! ls dist/luci-i18n-natmap-*.apk >/dev/null 2>&1; then
+            echo "::warning::没有产出 luci-i18n-natmap-* 翻译包"
+          fi
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+  release:
+    name: 发布 Release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 下载编译产物
+        uses: actions/download-artifact@v8
+        with:
+          name: apk
+          path: dist
+
+      - name: 创建并推送 tag
+        if: needs.prepare.outputs.need_tag == 'true'
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -eu
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            git tag -a "${TAG}" -m "${TAG}"
+          fi
+          git push origin "refs/tags/${TAG}"
+
+      - name: 生成 Release 说明
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: bash .github/scripts/release-notes.sh "$TAG" dist
+
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -eu
+          TITLE="$(cat release-title.txt)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，覆盖资产与说明"
+            gh release upload "$TAG" dist/*.apk --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file release-body.md
+          else
+            gh release create "$TAG" dist/*.apk \
+              --title "$TITLE" \
+              --notes-file release-body.md \
+              --verify-tag
+          fi
