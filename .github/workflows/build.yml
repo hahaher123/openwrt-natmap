@@ -8,7 +8,7 @@ name: Build & Release Packages
 #
 # 产物：OpenWrt 25.12（apk 包格式）
 #   luci-app-natmap-<ver>-r<rel>.apk        界面与脚本，PKGARCH=all，架构无关
-#   luci-i18n-natmap-zh-cn / zh-tw / ja     翻译包，架构无关
+#   luci-i18n-natmap-zh-cn                 简体中文翻译，架构无关
 on:
   push:
     branches:

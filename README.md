@@ -179,19 +179,18 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 | 文件 | 说明 |
 |---|---|
 | `luci-app-natmap-<版本>-r<revision>.apk` | 应用本体（界面、脚本、插件、默认配置） |
-| `luci-i18n-natmap-zh-cn-<版本>-r1.apk` | 简体中文翻译 |
-| `luci-i18n-natmap-zh-tw-<版本>-r1.apk` | 繁体中文翻译 |
-| `luci-i18n-natmap-ja-<版本>-r1.apk` | 日本語翻訳 |
+| `luci-i18n-natmap-zh-cn-<版本>.apk` | 简体中文翻译 |
 
 均为 `PKGARCH:=all` 的架构无关包，任何架构的路由器都能安装。
+
+> 翻译包版本号取自 LuCI feed（`PKG_PO_VERSION`），与应用的 `PKG_VERSION` 不同，属 LuCI 上游行为。
 
 **实现要点**
 
 - 用官方 `openwrt/gh-action-sdk` 在 `x86_64-25.12.5` SDK 容器里编译；SDK 版本写在 workflow 顶部的 `env.SDK_ARCH`，需要 ipk（OpenWrt 24.10 及更早）时改成 `x86_64-24.10.7` 并把收集产物时的 `.apk` 换成 `.ipk` 即可；
-- 只编译 `luci-app-natmap` 目录，`luci-i18n-natmap-*` 翻译包由 `luci.mk` 在该目录下生成，一并产出；
+- 只编译 `luci-app-natmap` 目录，`luci-i18n-natmap-*` 翻译包由 `luci.mk` 在该目录下生成，一并产出（当前仓库只保留 `po/zh_Hans`，因此只产出 `luci-i18n-natmap-zh-cn`）；
 - `luci-app-natmap/Makefile` 里把本应用与翻译包的 `DEFAULT` 显式设为 `m`——否则它们默认为 `n`，SDK 的 `make package/<目录>/compile` 会直接跳过未启用的包目录，构建不出任何东西；
-- Release 说明由 `.github/scripts/release-notes.sh` 生成：列出上一个标签以来的提交、本次附加的文件与安装命令；
-- 顺带修复：日文翻译目录原先命名为 `po/jp`，而 LuCI 的语言代码是 `ja`（该 `.po` 文件头写的也正是 `Language: ja`），导致 `luci-i18n-natmap-ja` **从未被生成过**。已重命名为 `po/ja`，现在会随 CI 一起产出。（`po/en` 是英文原文，LuCI 不会为它生成包，属正常。）
+- Release 说明由 `.github/scripts/release-notes.sh` 生成：列出上一个标签以来的提交、本次附加的文件与安装命令。
 
 **关于包签名**：CI 编译的包未经 OpenWrt 官方密钥签名，安装时必须加 `--allow-untrusted`（见下文"直接安装预编译包"）。如需签名，在仓库 Secrets 里配置 `PRIVATE_KEY`（apk 签名私钥）即可，workflow 会自动带上。
 
@@ -327,7 +326,7 @@ uci commit natmap
 ├── luci-app-natmap/
 │   ├── Makefile
 │   ├── htdocs/luci-static/resources/view/natmap/natmap.js   # LuCI2 前端
-│   ├── po/                                                   # 多语言（en / ja / zh_Hans / zh_Hant）
+│   ├── po/                                                   # 多语言（en 英文原文 / zh_Hans 简体中文）
 │   └── root/
 │       ├── etc/config/natmap                                # 默认配置模板
 │       ├── etc/init.d/natmap                                # procd 服务
