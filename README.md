@@ -17,150 +17,38 @@
 
 ---
 
-## ✨ 本维护分支新增/修复的内容
+## ✨ 本分支改动一览
 
-### 1. 修复 qBittorrent 端口修改失败（兼容 qBittorrent 5.2.x）
+相对原作者版本的主要修复与新增（只列作用，不列实现）。
 
-原版 `qbittorrent.sh` 在 qBittorrent 4.3+ / 5.x 上无法修改监听端口，本分支已修复：
+### 修复
 
-- **兼容 qBittorrent 5.2.x 的登录 API 破坏性变更**：
-  - 会话 cookie 由 `SID` 改名为 `QBT_SID_<WebUI端口>`（如 `QBT_SID_8085`）
-  - 登录成功响应码由 `200` 改为 `204`
-  - 原脚本按 `SID=` 正则抓取 cookie 必然失败 → 改为 **curl cookie jar（`-c`/`-b`）**，完全不依赖 cookie 名称，对 4.x / 5.0 / 5.1 / 5.2.x 全兼容
-- **通过 CSRF / Host header 校验**：登录与 `setPreferences` 请求均携带与 Host 同源的 `Referer` / `Origin`，避免 qBittorrent 4.3+ 默认开启 CSRF 保护后返回 401
-- **密码安全传输**：改用 `--data-urlencode` 编码，修复密码含 `&`、`^` 等特殊字符时被截断导致的登录失败
-- 重试逻辑完善、缺失参数时给出明确错误提示
-
-> 注：若通过域名访问 qBittorrent WebUI，请在 qBittorrent「Web UI 域名白名单」中加入该域名，否则 Host header 校验同样会 401。
-
-### 2. 新增：打洞端口同步到防火墙规则（自定义脚本）
-
-新增 `firewall_nas.sh`，在 natmap 打洞成功后自动把获取到的外部端口写入防火墙规则：
-
-- 默认目标规则：`nas_incoming_5`（放行 qBittorrent 的 IPv6 入站端口，目标规则需先自行创建）
-- 自动执行 `uci set ... dest_port` 并 `/etc/init.d/firewall reload`
-- 端口/协议未变化时跳过 reload，避免频繁重启防火墙
-- 支持 tcp/udp 协议自动合并；兼容「命名 section」与「option name」两种规则写法
-- 通过 LuCI「自定义脚本」或 plugin-link 方式接入
-
-### 3. natmap 核心版本 20260214
-
-本分支使用官方最新 **20260214**（OpenWrt 25.12 官方 feed `packages/net/natmap` 同版本）的 natmap 核心，由官方 feed 提供。该版本相比 20240813 的改进：
-
-- **端口复用**：keepalive 时尽量沿用同一端口，只有端口不可用时才更换，减少端口跳变
-- 连接失败自动重试（最多 100 次）+ 修复多处 fd 泄漏
-- 转发空闲超时默认值 120s → 300s
-- 新增 `-c`（UDP STUN 探测周期）、`-C`（TCP 拥塞控制）、`-b ~`（端口区间随机分配）等参数
-- 命令行接口向后兼容，原有启动参数全部保留
-
-### 4. 修复防火墙 IPv6 放行与 Cloudflare 联动问题（2026-08）
-
-#### 4.1 修复 `firewall-forward.sh` IPv6 放行条件失效
-
-原 IPv6 放行判断存在语法错误（`[ [ ... ] && [ ... ] ]` 嵌套、`["...` 缺少空格），该分支**永远不会执行**；且 qbittorrent 的 IPv6 开关判断写反。已修正为：
-
-```bash
-if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || \
-   { [ "${LINK_MODE}" = qbittorrent ] && [ "${LINK_QB_ALLOW_IPV6}" = 1 ]; }; then
-```
-
-#### 4.2 修复 `cloudflare_ddns.sh` 双等号赋值 bug
-
-`local local_result==$(curl ...)` 多写了一个 `=`，导致变量值变成 `=响应体`，jq 解析失败、DDNS 更新**永远失败**。已去掉多余等号。
-
-#### 4.3 修复 init 脚本重复 `-i` 参数
-
-`forward_firewall_target_interface` 被误追加为 natmap 的 `-i` 参数，与 `general_wan_interface` 同时配置时**覆盖 WAN 接口，导致 natmap 绑定到错误接口、打洞失效**。该接口仅需通过环境变量传给转发插件，已删除多余的 `-i` 追加。
-
-#### 4.4 修复 `cloudflare_redirect_rule.sh` 更新失败（动态规则字段不匹配）
-
-**现象**：日志反复出现 `cloudflare_redirect_rule 达到最大重试次数，无法修改`。
-
-**原因**：Cloudflare 控制台创建的动态跳转规则，目标 URL 存于 `target_url.expression`；旧脚本写入 `target_url.value`，两个字段并存被 API 拒绝（`400 错误码 20083: target_url should be either value or expression`）。
-
-**修复**：脚本统一将 `target_url` 整体替换为 `{"value": "<URL>"}`（静态跳转形式，纯 URL 即可被 API 接受），自动兼容动态/静态规则；失败时把 Cloudflare 返回的具体 errors 写入 `/var/log/natmap/natmap.log`。`cloudflare_origin_rule.sh` 同步改进。
-
-#### 4.5 全局健壮性
-
-- 所有插件脚本的 curl 统一增加超时（API 类 `-m 20`、通知类 `-m 15`），避免网络卡死导致脚本挂起、进程堆积
-- `update.sh` 增加 `flock` 并发锁：natmap 异步执行回调且不等待返回，多实例/连续触发时串行化，避免并发写 uci/防火墙冲突
-- 修正 LuCI 帮助文案：`NEW_PORT` 应替换 URL 中的**端口**（冒号后的数字），示例 `http://1.2.3.4:NEW_PORT/`（此前示例为路径形式，易误导）
-
-### 5. 脚本健壮性批量修复（2026-09）
-
-#### 5.1 服务与主脚本
-
-| 文件 | 问题与修复 |
+| 项目 | 作用 |
 |---|---|
-| `init.d/natmap` | `procd_append_param env` 未加引号：配置值含空格（如自定义脚本路径、Gotify URL）时会被拆成两个参数，环境变量损坏。已整体加引号 |
-| `update.sh` | ① 移除 busybox ash 不支持的 bashism `export -n`（OpenWrt 上每次执行自定义脚本分支都会报错）；② 提前 `mkdir -p /var/run/natmap` 与日志目录，修复锁等待超时分支、独立运行时写状态 JSON/日志失败 |
-| 默认配置 | 默认 STUN 服务器由 `stunserver.stunprotocol.org`（项目已停止服务）改为 `stun.cloudflare.com`（仅影响新安装） |
+| qBittorrent 端口联动 | 兼容 qBittorrent 4.3+ / 5.x（含 5.2.x）；密码含特殊字符也能登录并修改监听端口 |
+| Transmission / Emby 联动 | 修复凭据含特殊字符时登录失败、状态码判断错误导致的无限重试 |
+| Cloudflare 联动 | 修复 DDNS 永远更新失败、跳转规则更新被 API 拒绝的问题；记录不存在时给出明确提示，不再反复无效重试 |
+| 防火墙 IPv6 放行 | 修复放行规则失效、开关判断写反、放行端口用错（用到 IPv4 目标端口）的问题——IPv6 入站不再被拒 |
+| 接口绑定 | 修复与转发接口同时配置时覆盖 WAN 接口、导致打洞失效的问题 |
+| 通知插件 | 消息含引号、换行、`&`、`=` 等不再发送失败；服务端返回错误时不再误报「发送成功」，并会自动重试 |
+| 脚本健壮性 | 统一请求超时，避免网络卡死导致脚本挂起、进程堆积；避免并发写 uci/防火墙冲突；配置值含空格不再损坏环境变量 |
+| 默认 STUN 服务器 | 由已停服的地址改为可用的 `stun.cloudflare.com`（仅影响新安装） |
 
-#### 5.2 转发 / 联动插件
+### 新增
 
-| 文件 | 问题与修复 |
+| 项目 | 作用 |
 |---|---|
-| `plugin-forward/firewall-forward.sh` | IPv6 放行规则 `dest_port` 误用 IPv4 DNAT 的目标端口 `forward_target_port`。IPv6 无 NAT，qB/TR 实际监听的是打洞得到的外部端口，两者不一致时放行的是无人监听的端口、IPv6 入站全部被拒。已改为 `$outter_port` |
-| `plugin-link/emby.sh` | HTTP 状态码判断修复：旧写法把响应体和状态码拼接后再 `-eq 200` 比较，Emby 返回 `204 No Content` 时被误判失败导致无限重试。改为 `-o /dev/null -w "%{http_code}"` 并接受 2xx；未加引号的变量已加引号 |
-| `plugin-link/transmission.sh` | 凭据未加引号：用户名/密码含空格或特殊字符时登录失败。已改为 `-u "$USER:$PASS"` 整体传递；移除重试路径上多余的 `sleep` |
-| `plugin-link/cloudflare_ddns.sh` | DNS 记录不存在时不再向空 id 的 URL（`.../dns_records/`）发起无效 PUT，日志明确提示「请先在 Cloudflare 添加该记录」，AAAA/HTTPS/SRV 三条分支均已覆盖 |
+| 等待网络就绪后再打洞 | 开机 / 网络重置时先等 WAN 就绪再打洞，避免开机后一直打洞失败；等待有上限，超时照常启动，不会阻塞打洞 |
+| 断网后可自恢复 | 长时间断网不再使实例永久停摆，网络恢复后自动重新打洞 |
+| 端口同步到防火墙 | 打洞成功后自动把外部端口写入指定防火墙规则 |
 
-#### 5.3 通知插件（4 个）
+### natmap 核心
 
-| 文件 | 问题与修复 |
-|---|---|
-| `telegram_bot.sh` / `pushplus.sh` | 手工拼接 JSON：消息含引号/换行即破坏请求体。改用 `jq -n --arg` 构建；同时从「只看 curl 退出码」改为检查 HTTP 状态码——旧逻辑在 4xx/5xx 时也会误报「发送成功」且不再重试 |
-| `serverchan.sh` | 手工拼 `title=x&desp=x`：消息含 `&`、`=` 或换行时参数被截断。改用 `--data-urlencode` |
-| `gotify.sh` | 同上改为检查 HTTP 状态码（curl 退出码为 0 不代表服务端接受） |
-
-### 6. 新增：等待网络就绪后再打洞（2026-09）
-
-**问题**：natmap 上游核心没有"等待网络"的能力，STUN 连不通就直接退出，靠外部重启补偿。此前存在两处相关缺陷：
-
-1. **开机时网络未就绪**：natmap 秒退 → procd 每 5 秒重试一次 → 默认配置下 **5 次（约 25 秒）后就不再拉起实例**，整条链路（打洞、状态 JSON、转发、联动、通知）停摆，只能手动重载；
-2. **`-i` 解析过早**：`init.d` 在声明实例时解析 WAN 设备名，此刻 `network_get_device` 可能失败，代码会回落到**逻辑接口名**（如 `wan`）并当作设备名传给 `-i wan`，natmap 绑定到不存在的设备。
-
-**实现**：新增启动包装脚本 `wait-network.sh`，由 `init.d` 作为 procd 的 command 执行，启动前先等网络就绪，就绪后再解析设备名并以 `-i` 传给 natmap。
-
-判定"就绪"的三个条件（依次检查）：
-
-| 条件 | 检查方式 |
-|---|---|
-| WAN 接口 up | `ubus -S -t 3 call network.interface.<wan> status` 的 `up` 为 `true`（拿不到状态时跳过此项） |
-| 设备存在 | `l3_device`（PPPoE 场景下才是真正承载地址的设备）→ 回落到 `network_get_device`，再确认 `/sys/class/net/<dev>` 存在 |
-| STUN 可达 | 对 STUN 服务器（剥掉 `[v6]` 与端口后）`ping -c1 -W2`，失败再用限时 `nslookup` 补充（ICMP 常被上游屏蔽，DNS 解析成功也算通） |
-
-**"绝不阻塞打洞"的设计**（对应新增配置项）：
-
-- 等待有上限：`general_wait_network_timeout` 秒（默认 120），**超时后照常启动 natmap**。探测只用来"尽量晚启动"，探测误判（如 ICMP 被屏蔽、DNS 探测工具缺失）最多让本次启动晚一点，不会导致 natmap 不启动；
-- 关闭即可回到旧行为：`general_wait_network=0`（或超时设为 0）时完全不探测，直接启动；
-- 最终 `exec` 到 natmap，不引入额外常驻进程——PID 不变，procd 的 respawn / netdev / stop 全部直接作用于 natmap（`update.sh` 按 `$PPID` 写状态 JSON 的机制也不受影响）。
-
-**网络重置后仍能重新打洞**（与此前行为一致，仅更稳）：
-
-- `init.d` 仍声明 `netdev`，WAN 设备重建（PPPoE 重拨等）导致 ifindex 变化 → procd 判定实例配置已变 → 重启实例 → 包装脚本重新等待就绪 → natmap 重新打洞；
-- 接口 up/down 事件触发的 reload（`procd_add_reload_interface_trigger`）同样只影响受影响的实例；
-- `procd_set_param respawn 3600 5 0`：**第三项 0 表示不限重启次数**。网络长时间中断时 natmap 会持续失败，若沿用默认的 5 次上限，实例会在网络恢复前就彻底停摆、网络恢复后也不会自己重新打洞。
-
-> 注：`-i` 的解析已从 `init.d` 移到 `wait-network.sh`，`init.d` 里仍保留 `network_get_device` 的调用，但只用于声明 `netdev`（供 procd 检测设备重建），不再作为 natmap 的 `-i` 参数。
-
-日志（`/var/log/natmap/natmap.log`）中的相关记录：
-
-```
-2026-09-11 09:34:10 : mynat - 等待网络就绪(最长 120 秒)...
-2026-09-11 09:34:38 : mynat - 网络已就绪(等待 28 秒), 开始打洞
-```
-
-或未就绪直到超时：
-
-```
-2026-09-11 09:36:10 : mynat - 等待网络就绪(最长 120 秒)...
-2026-09-11 09:38:10 : mynat - 等待网络就绪超时(120 秒), 照常启动 natmap
-```
+使用官方最新 **20260214**（与 OpenWrt 25.12 官方 feed 同版本），相比旧版端口复用更稳定（减少端口跳变）、连接失败会自动重试、空闲转发保持更久。
 
 ---
 
-### 7. 手动编译与发布（GitHub Actions，2026-09）
+## 🤖 手动编译与发布（GitHub Actions）
 
 `.github/workflows/build.yml` 用 OpenWrt SDK 在 GitHub 上编译 apk 并可发布 Release，无需本地编译环境。
 
