@@ -131,13 +131,18 @@ jobs:
           echo "--- bin/packages 下的目录 ---"
           find bin/packages -maxdepth 3 -type d | head -n 40 || true
 
-          # 按包名收集，避免把 SDK 自带的其他预编译包一并打包
-          find bin/packages -type f -name '*natmap*.apk' -exec cp -v {} dist/ \; || true
+          # 只收集本应用与翻译包：
+          #   - 编译 luci-app-natmap 时会顺带把依赖 natmap 也编译出来，它是架构相关包
+          #     （本 workflow 用 x86_64 SDK），对 ARM/MIPS 设备无用，不纳入发布
+          #   - 同时也避免把 SDK 自带的其它预编译包一并打进来
+          find bin/packages -type f \
+            \( -name 'luci-app-natmap-*.apk' -o -name 'luci-i18n-natmap-*.apk' \) \
+            -exec cp -v {} dist/ \; || true
 
           # 兜底：按包名没匹配到时，从本仓库 feed 的输出目录收集
           if [ -z "$(ls -A dist)" ]; then
             echo "未按包名匹配到产物，改用 feed 输出目录收集"
-            find bin/packages -type f -path "*/${FEED_NAME}/*.apk" -exec cp -v {} dist/ \; || true
+            find bin/packages -type f -path "*/${FEED_NAME}/luci-*.apk" -exec cp -v {} dist/ \; || true
           fi
 
           echo "--- dist ---"
