@@ -160,19 +160,19 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 
 ---
 
-### 7. 自动编译与发布（GitHub Actions，2026-09）
+### 7. 手动编译与发布（GitHub Actions，2026-09）
 
-`.github/workflows/build.yml` 会在版本号变动时自动用 OpenWrt SDK 编译并发布 GitHub Release，无需本地环境。
+`.github/workflows/build.yml` 用 OpenWrt SDK 在 GitHub 上编译 apk 并可发布 Release，无需本地编译环境。
 
-**触发方式**
+**触发方式：仅手动**
 
-| 触发 | 行为 |
+| 操作 | 行为 |
 |---|---|
-| 推送 `vX.Y.Z` 标签 | 用该标签处的代码编译，并创建／更新对应 Release |
-| 推送 `master` 且 `luci-app-natmap/Makefile` 的 `PKG_VERSION` 已变化 | 自动打上 `v<新版本>` 标签 → 编译 → 发布 Release |
-| 手动触发（Actions → Build & Release Packages → Run workflow） | 可指定版本号；勾选 `force` 可重建已存在的版本并覆盖 Release 资产 |
+| Actions → Build & Release Packages → Run workflow | 编译当前分支代码；默认按 `luci-app-natmap/Makefile` 的 `PKG_VERSION` 生成 `v<版本>` 标签并创建/更新对应 Release |
+| 同上，`version` 填具体版本号 | 用指定版本号（不含 `v` 前缀）打标签、发版 |
+| 同上，勾选 `force` | 即使标签已存在也重新编译，并覆盖 Release 资产 |
 
-> 若 `PKG_VERSION` 未变化（标签已存在），`master` 推送会直接跳过，不会重复发版。发版流程因此简化为：**改 `PKG_VERSION` → 提交推送 → 等待 CI**。
+> 自动触发（推送 `v*` 标签、或 `master` 上 `PKG_VERSION` 变化时自动发版）已**关闭**——版本号改动不会再自动出包、自动建 tag。
 
 **产物**（OpenWrt 25.12 / apk 格式）
 

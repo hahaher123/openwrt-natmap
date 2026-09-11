@@ -1,20 +1,13 @@
 name: Build & Release Packages
 
-# 触发方式：
-#   1) 推送 vX.Y.Z 标签      -> 为该校签编译并发布 Release
-#   2) 推送 master 且 luci-app-natmap/Makefile 的 PKG_VERSION 有变动
-#                            -> 自动打 tag、编译、发布 Release
-#   3) 手动触发（可指定版本号，或强制重建已存在的版本）
+# 仅手动触发：Actions 页面 → 本工作流 → Run workflow。
+# 已关闭 push 自动触发（原设计为「推送 v* 标签」或「master 上 PKG_VERSION 变化」
+# 时自动编译发版），避免版本号一改动就自动出包、自动建 tag 与 Release。
 #
 # 产物：OpenWrt 25.12（apk 包格式）
 #   luci-app-natmap-<ver>-r<rel>.apk        界面与脚本，PKGARCH=all，架构无关
 #   luci-i18n-natmap-zh-cn                 简体中文翻译，架构无关
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
