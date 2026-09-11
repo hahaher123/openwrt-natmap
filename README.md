@@ -43,9 +43,9 @@
 - 支持 tcp/udp 协议自动合并；兼容「命名 section」与「option name」两种规则写法
 - 通过 LuCI「自定义脚本」或 plugin-link 方式接入
 
-### 3. 升级 natmap 核心至 20260214
+### 3. natmap 核心版本 20260214
 
-内置 natmap 程序由 20240813 升级到官方最新 **20260214**（OpenWrt 25.12 官方 feed 同版本），获得以下改进：
+本分支使用官方最新 **20260214**（OpenWrt 25.12 官方 feed `packages/net/natmap` 同版本）的 natmap 核心，由官方 feed 提供。该版本相比 20240813 的改进：
 
 - **端口复用**：keepalive 时尽量沿用同一端口，只有端口不可用时才更换，减少端口跳变
 - 连接失败自动重试（最多 100 次）+ 修复多处 fd 泄漏
@@ -323,26 +323,26 @@ uci commit natmap
 ├── .github/
 │   ├── workflows/build.yml                                  # 【新增】自动编译 + 发版
 │   └── scripts/release-notes.sh                             # 【新增】生成 Release 说明
-├── luci-app-natmap/
-│   ├── Makefile
-│   ├── htdocs/luci-static/resources/view/natmap/natmap.js   # LuCI2 前端
-│   ├── po/                                                   # 多语言（en 英文原文 / zh_Hans 简体中文）
-│   └── root/
-│       ├── etc/config/natmap                                # 默认配置模板
-│       ├── etc/init.d/natmap                                # procd 服务
-│       └── usr/share/natmap/
-│           ├── wait-network.sh                              # 【新增】等待网络就绪 + 解析 -i
-│           ├── update.sh                                    # 打洞成功回调入口
-│           ├── link.sh / forward.sh / notify.sh
-│           ├── plugin-forward/                              # 转发插件
-│           ├── plugin-link/
-│           │   ├── qbittorrent.sh                           # 【已修复 5.2.x 兼容】
-│           │   ├── transmission.sh / emby.sh / cloudflare_*.sh
-│           │   └── firewall_nas.sh                          # 【新增】防火墙端口同步
-│           └── plugin-notify/                               # 通知插件（均已加固）
-└── natmap/
-    └── Makefile                                              # 【已升级】natmap 20260214
+└── luci-app-natmap/
+    ├── Makefile
+    ├── htdocs/luci-static/resources/view/natmap/natmap.js   # LuCI2 前端
+    ├── po/                                                   # 多语言（en 英文原文 / zh_Hans 简体中文）
+    └── root/
+        ├── etc/config/natmap                                # 默认配置模板
+        ├── etc/init.d/natmap                                # procd 服务
+        └── usr/share/natmap/
+            ├── wait-network.sh                              # 【新增】等待网络就绪 + 解析 -i
+            ├── update.sh                                    # 打洞成功回调入口
+            ├── link.sh / forward.sh / notify.sh
+            ├── plugin-forward/                              # 转发插件
+            ├── plugin-link/
+            │   ├── qbittorrent.sh                           # 【已修复 5.2.x 兼容】
+            │   ├── transmission.sh / emby.sh / cloudflare_*.sh
+            │   └── firewall_nas.sh                          # 【新增】防火墙端口同步
+            └── plugin-notify/                               # 通知插件（均已加固）
 ```
+
+> natmap 核心程序不在此仓库内，由 OpenWrt 官方 feed（`packages/net/natmap`）提供。
 
 ---
 
