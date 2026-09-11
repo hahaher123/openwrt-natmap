@@ -53,7 +53,7 @@ printf '%s: %s\n' "${TAG}" "${FIRST}" >"${OUT}/release-title.txt"
 	echo "| --- | --- |"
 	echo "| \`luci-app-natmap-*.apk\` | LuCI 界面与脚本（含默认配置、各转发/联动/通知插件） |"
 	echo "| \`luci-i18n-natmap-zh-cn.apk\` | 简体中文翻译 |"
-	echo "| \`luci-i18n-natmap-zh-tw.apk\` | 正體中文翻譯 |"
+	echo "| \`luci-i18n-natmap-zh-tw.apk\` | 繁体中文翻译 |"
 	echo "| \`luci-i18n-natmap-ja.apk\` | 日本語翻訳 |"
 	echo
 	echo "本次实际附加的文件："

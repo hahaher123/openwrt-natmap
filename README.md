@@ -180,7 +180,7 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 |---|---|
 | `luci-app-natmap-<版本>-r<revision>.apk` | 应用本体（界面、脚本、插件、默认配置） |
 | `luci-i18n-natmap-zh-cn-<版本>-r1.apk` | 简体中文翻译 |
-| `luci-i18n-natmap-zh-tw-<版本>-r1.apk` | 正體中文翻譯 |
+| `luci-i18n-natmap-zh-tw-<版本>-r1.apk` | 繁体中文翻译 |
 | `luci-i18n-natmap-ja-<版本>-r1.apk` | 日本語翻訳 |
 
 均为 `PKGARCH:=all` 的架构无关包，任何架构的路由器都能安装。
