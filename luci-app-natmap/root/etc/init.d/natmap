@@ -21,6 +21,8 @@ validate_section_natmap() {
 		'general_ip_address_family:string' \
 		'general_nat_protocol:string' \
 		'general_wan_interface:string' \
+		'general_wait_network:bool:1' \
+		'general_wait_network_timeout:uinteger:120' \
 		'general_nat_name:string' \
 		'general_interval:uinteger' \
 		'general_stun_server:host' \
@@ -98,7 +100,9 @@ natmap_instance() {
 	[ "${natmap_enable}" = 0 ] && return 1
 
 	procd_open_instance "$1"
-	procd_set_param command "$PROG" \
+	# 通过 wait-network.sh 启动：就绪前不启动 natmap，避免开机/网络重置时
+	# 因 STUN 不可达连续失败而耗尽 respawn 次数
+	procd_set_param command /usr/share/natmap/wait-network.sh "$PROG" \
 		${general_interval:+-k "$general_interval"} \
 		${general_stun_server:+-s "$general_stun_server"} \
 		${general_http_server:+-h "$general_http_server"} \
@@ -108,11 +112,15 @@ natmap_instance() {
 	[ "${general_ip_address_family}" = ipv6 ] && procd_append_param command -6
 	[ "${general_nat_protocol}" = 'udp' ] && procd_append_param command -u
 
+	# 注意：-i 的解析已移到 wait-network.sh，在"网络就绪"之后再解析设备名
+	# （init.d 声明实例时网络可能还没起来，那时解析会失败并回落到逻辑接口名，
+	# 导致 natmap 绑定到不存在的设备）。
+	# 这里仍然声明 netdev，供 procd 检测 WAN 设备重建（PPPoE 重拨等）：
+	# ifindex 变化会让实例被认为"配置已变"而重启，从而重新等待就绪并重新打洞。
 	[ -n "${general_wan_interface}" ] && {
 		local ifname
 
 		network_get_device ifname "$general_wan_interface" || ifname="$general_wan_interface"
-		procd_append_param command -i "$ifname"
 		procd_append_param netdev "$ifname"
 	}
 
@@ -132,7 +140,12 @@ natmap_instance() {
 	# console.log "natmap"
 	procd_append_param command -e /usr/share/natmap/update.sh
 
-	procd_set_param respawn
+	# respawn 参数：<阈值> <重启间隔> <最大重试次数>
+	# 第三项为 0 表示不限次数——网络长时间中断时 natmap 会持续失败，
+	# 若沿用默认的 5 次上限，实例会在网络恢复前就彻底停摆（不再拉起），
+	# 网络恢复后也不会自己重新打洞。配合 wait-network.sh 的就绪等待，
+	# 正常的启动失败已很少发生，这里放开次数上限保证一定能自愈。
+	procd_set_param respawn 3600 5 0
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 

@@ -113,6 +113,51 @@ if { [ "${LINK_MODE}" = transmission ] && [ "${LINK_TR_ALLOW_IPV6}" = 1 ]; } || 
 | `serverchan.sh` | 手工拼 `title=x&desp=x`：消息含 `&`、`=` 或换行时参数被截断。改用 `--data-urlencode` |
 | `gotify.sh` | 同上改为检查 HTTP 状态码（curl 退出码为 0 不代表服务端接受） |
 
+### 6. 新增：等待网络就绪后再打洞（2026-09）
+
+**问题**：natmap 上游核心没有"等待网络"的能力，STUN 连不通就直接退出，靠外部重启补偿。此前存在两处相关缺陷：
+
+1. **开机时网络未就绪**：natmap 秒退 → procd 每 5 秒重试一次 → 默认配置下 **5 次（约 25 秒）后就不再拉起实例**，整条链路（打洞、状态 JSON、转发、联动、通知）停摆，只能手动重载；
+2. **`-i` 解析过早**：`init.d` 在声明实例时解析 WAN 设备名，此刻 `network_get_device` 可能失败，代码会回落到**逻辑接口名**（如 `wan`）并当作设备名传给 `-i wan`，natmap 绑定到不存在的设备。
+
+**实现**：新增启动包装脚本 `wait-network.sh`，由 `init.d` 作为 procd 的 command 执行，启动前先等网络就绪，就绪后再解析设备名并以 `-i` 传给 natmap。
+
+判定"就绪"的三个条件（依次检查）：
+
+| 条件 | 检查方式 |
+|---|---|
+| WAN 接口 up | `ubus -S -t 3 call network.interface.<wan> status` 的 `up` 为 `true`（拿不到状态时跳过此项） |
+| 设备存在 | `l3_device`（PPPoE 场景下才是真正承载地址的设备）→ 回落到 `network_get_device`，再确认 `/sys/class/net/<dev>` 存在 |
+| STUN 可达 | 对 STUN 服务器（剥掉 `[v6]` 与端口后）`ping -c1 -W2`，失败再用限时 `nslookup` 补充（ICMP 常被上游屏蔽，DNS 解析成功也算通） |
+
+**"绝不阻塞打洞"的设计**（对应新增配置项）：
+
+- 等待有上限：`general_wait_network_timeout` 秒（默认 120），**超时后照常启动 natmap**。探测只用来"尽量晚启动"，探测误判（如 ICMP 被屏蔽、DNS 探测工具缺失）最多让本次启动晚一点，不会导致 natmap 不启动；
+- 关闭即可回到旧行为：`general_wait_network=0`（或超时设为 0）时完全不探测，直接启动；
+- 最终 `exec` 到 natmap，不引入额外常驻进程——PID 不变，procd 的 respawn / netdev / stop 全部直接作用于 natmap（`update.sh` 按 `$PPID` 写状态 JSON 的机制也不受影响）。
+
+**网络重置后仍能重新打洞**（与此前行为一致，仅更稳）：
+
+- `init.d` 仍声明 `netdev`，WAN 设备重建（PPPoE 重拨等）导致 ifindex 变化 → procd 判定实例配置已变 → 重启实例 → 包装脚本重新等待就绪 → natmap 重新打洞；
+- 接口 up/down 事件触发的 reload（`procd_add_reload_interface_trigger`）同样只影响受影响的实例；
+- `procd_set_param respawn 3600 5 0`：**第三项 0 表示不限重启次数**。网络长时间中断时 natmap 会持续失败，若沿用默认的 5 次上限，实例会在网络恢复前就彻底停摆、网络恢复后也不会自己重新打洞。
+
+> 注：`-i` 的解析已从 `init.d` 移到 `wait-network.sh`，`init.d` 里仍保留 `network_get_device` 的调用，但只用于声明 `netdev`（供 procd 检测设备重建），不再作为 natmap 的 `-i` 参数。
+
+日志（`/var/log/natmap/natmap.log`）中的相关记录：
+
+```
+2026-09-11 09:34:10 : mynat - 等待网络就绪(最长 120 秒)...
+2026-09-11 09:34:38 : mynat - 网络已就绪(等待 28 秒), 开始打洞
+```
+
+或未就绪直到超时：
+
+```
+2026-09-11 09:36:10 : mynat - 等待网络就绪(最长 120 秒)...
+2026-09-11 09:38:10 : mynat - 等待网络就绪超时(120 秒), 照常启动 natmap
+```
+
 ---
 
 ## 📦 功能总览（继承自原版）
@@ -172,6 +217,8 @@ make -j$(nproc)
 | 配置项 | 说明 |
 |---|---|
 | `general_wan_interface` | WAN 接口名（如 `wan`） |
+| `general_wait_network` | 是否等待网络就绪后再打洞（默认 `1`）。`0` = 不等待，直接启动（旧行为） |
+| `general_wait_network_timeout` | 等待就绪的最长秒数（默认 `120`）。超时后照常启动 natmap，不会一直等下去 |
 | `general_nat_protocol` | `tcp` / `udp` |
 | `general_ip_address_family` | `ipv4` / `ipv6`（留空为双栈） |
 | `general_interval` | keepalive 间隔（秒） |
@@ -228,6 +275,7 @@ uci commit natmap
 │       ├── etc/config/natmap                                # 默认配置模板
 │       ├── etc/init.d/natmap                                # procd 服务
 │       └── usr/share/natmap/
+│           ├── wait-network.sh                              # 【新增】等待网络就绪 + 解析 -i
 │           ├── update.sh                                    # 打洞成功回调入口
 │           ├── link.sh / forward.sh / notify.sh
 │           ├── plugin-forward/                              # 转发插件
@@ -247,6 +295,7 @@ uci commit natmap
 | 问题 | 排查 |
 |---|---|
 | 打洞失败 / 一直重试 | 确认宽带是公网 IP / NAT1；更换 STUN 服务器测试 |
+| 开机后一直没有打洞 | 看日志是否停在「等待网络就绪」：说明 WAN 未就绪或 STUN 探测不通过（ICMP 被上游屏蔽时属误判），到 `general_wait_network_timeout` 后仍会照常启动；也可临时设 `general_wait_network=0` 排除探测影响 |
 | qB 端口改不动 | 确认 `link_qb_web_url` 与 qB 实际地址一致；域名访问需加入 qB 域名白名单；日志看 `/var/log/natmap/natmap.log` |
 | 防火墙规则未更新 | 确认 `custom_script_enable=1` 且脚本路径存在（`file` 校验要求文件真实存在） |
 | 服务起不来 `validation failed` | `custom_script_path` 指向的文件必须存在 |

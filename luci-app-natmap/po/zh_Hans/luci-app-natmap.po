@@ -395,6 +395,22 @@ msgstr "用户名"
 msgid "Wan Interface"
 msgstr "WAN 接口"
 
+#: natmap.js:118 natmap.js:120
+msgid "Do not start hole punching until the wan interface is up and the stun server is reachable"
+msgstr "WAN 接口就绪且 STUN 服务器可达后才开始打洞"
+
+#: natmap.js:130
+msgid "Network ready wait timeout"
+msgstr "等待网络就绪超时"
+
+#: natmap.js:131
+msgid "Seconds; start natmap anyway after timeout"
+msgstr "秒；超时后仍会照常启动 natmap"
+
+#: natmap.js:118
+msgid "Wait for network ready"
+msgstr "等待网络就绪"
+
 #: natmap.js:605
 msgid "Web UI URL"
 msgstr "网页 URL"

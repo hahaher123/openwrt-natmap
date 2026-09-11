@@ -4,6 +4,8 @@ config natmap
 	option general_nat_protocol 'tcp'
 	option general_ip_address_family ''
 	option general_wan_interface ''
+	option general_wait_network '1'
+	option general_wait_network_timeout '120'
 	option general_interval ''
 	option general_stun_server 'stun.cloudflare.com'
 	option general_http_server 'example.com'

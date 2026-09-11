@@ -63,6 +63,22 @@ msgstr "IPv6のみ"
 msgid "Wan Interface"
 msgstr "WANインターフェース"
 
+#: natmap.js:118 natmap.js:120
+msgid "Do not start hole punching until the wan interface is up and the stun server is reachable"
+msgstr "WANインターフェースが起動し、STUNサーバーに到達可能になるまでホールパンチングを開始しません"
+
+#: natmap.js:130
+msgid "Network ready wait timeout"
+msgstr "ネットワーク準備完了の待機タイムアウト"
+
+#: natmap.js:131
+msgid "Seconds; start natmap anyway after timeout"
+msgstr "秒；タイムアウト後も natmap を起動します"
+
+#: natmap.js:118
+msgid "Wait for network ready"
+msgstr "ネットワーク準備完了を待つ"
+
 #: natmap.js:117
 msgid "Keep-alive interval"
 msgstr "キープアライブ間隔"

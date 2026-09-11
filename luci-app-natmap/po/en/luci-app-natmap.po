@@ -63,6 +63,22 @@ msgstr "IPv6 only"
 msgid "Wan Interface"
 msgstr "Wan Interface"
 
+#: natmap.js:118 natmap.js:120
+msgid "Do not start hole punching until the wan interface is up and the stun server is reachable"
+msgstr "Do not start hole punching until the wan interface is up and the stun server is reachable"
+
+#: natmap.js:130
+msgid "Network ready wait timeout"
+msgstr "Network ready wait timeout"
+
+#: natmap.js:131
+msgid "Seconds; start natmap anyway after timeout"
+msgstr "Seconds; start natmap anyway after timeout"
+
+#: natmap.js:118
+msgid "Wait for network ready"
+msgstr "Wait for network ready"
+
 #: natmap.js:117
 msgid "Keep-alive interval"
 msgstr "Keep-alive interval"

@@ -113,6 +113,30 @@ return view.extend({
 
     o = s.taboption(
       "general",
+      form.Flag,
+      "general_wait_network",
+      _("Wait for network ready"),
+      _(
+        "Do not start hole punching until the wan interface is up and the stun server is reachable"
+      )
+    );
+    o.default = true;
+    o.modalonly = true;
+
+    o = s.taboption(
+      "general",
+      form.Value,
+      "general_wait_network_timeout",
+      _("Network ready wait timeout"),
+      _("Seconds; start natmap anyway after timeout")
+    );
+    o.datatype = "uinteger";
+    o.default = 120;
+    o.modalonly = true;
+    o.depends("general_wait_network", "1");
+
+    o = s.taboption(
+      "general",
       form.Value,
       "general_interval",
       _("Keep-alive interval")
